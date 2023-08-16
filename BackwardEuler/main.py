@@ -8,7 +8,7 @@ import numpy as np
 from dolfin import *
 
 from FOM import FOM
-#from ROM import ROM
+from ROM import ROM
 
 # ---------- FEniCS parameters ---------
 parameters["reorder_dofs_serial"] = False
@@ -51,10 +51,27 @@ REL_ERROR_TOL = 1e-2
 MAX_ITERATIONS = 100
 TOTAL_ENERGY = {
     "primal": {
-        "velocity": 1 - 1e-4,
+        "displacement": 1 - 1e-6,
         "pressure": 1 - 1e-6,
     },
 }
 
 fom = FOM(t, T, dt, Mandel())
 fom.solve_primal(force_recompute=False)
+
+rom = ROM(
+    fom,
+    REL_ERROR_TOL=REL_ERROR_TOL,
+    MAX_ITERATIONS=MAX_ITERATIONS,
+    TOTAL_ENERGY=TOTAL_ENERGY,
+)
+
+# POD
+rom.init_POD()
+
+# compute reduced matrices
+print("starting matrix reduction")
+rom.compute_reduced_matrices()
+print("finished matrix reduction")
+
+rom.solve_primal()
