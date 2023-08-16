@@ -22,6 +22,7 @@ class FOM:
         self.t = t
         self.T = T
         self.dt = dt
+        self.problem = problem
 
         # for each variable of the object problem, add this variable to the FOM
         for key, value in problem.__dict__.items():
@@ -40,9 +41,9 @@ class FOM:
             self.mesh = RectangleMesh(Point(0., 0.), Point(100., 20.), 16, 16)
             self.dim = self.mesh.geometry().dim()
 
-            plt.title("Mesh")
-            plot(self.mesh)
-            plt.show()
+            # plt.title("Mesh")
+            # plot(self.mesh)
+            # plt.show()
         else: 
             raise NotImplementedError("Only Mandel problem implemented so far.")
             
@@ -147,6 +148,37 @@ class FOM:
             )[self.dofs["displacement"] :, : self.dofs["displacement"]]
 
             self.vector["primal"]["traction"] = np.array(assemble(Constant(self.traction_y_biot)*Phi[1]*self.ds_up))[: self.dofs["displacement"]]
+
+            # build system matrix
+            self.matrix["primal"]["system_matrix"] = scipy.sparse.csr_matrix(
+                (
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                )
+            )
+            self.matrix["primal"]["system_matrix"][: self.dofs["displacement"], : self.dofs["displacement"]] = self.matrix["primal"]["stress"]
+            self.matrix["primal"]["system_matrix"][: self.dofs["displacement"], self.dofs["displacement"] :] = self.matrix["primal"]["elasto_pressure"]
+            self.matrix["primal"]["system_matrix"][self.dofs["displacement"] :, self.dofs["displacement"] :] = self.matrix["primal"]["laplace"]
+            self.matrix["primal"]["system_matrix"][self.dofs["displacement"] :, : self.dofs["displacement"]] = self.matrix["primal"]["time_displacement"]
+            self.matrix["primal"]["system_matrix"][self.dofs["displacement"] :, self.dofs["displacement"] :] += self.matrix["primal"]["time_pressure"]
+            # apply BC
+            self.boundary_dof_vector = np.zeros((self.dofs["displacement"]+self.dofs["pressure"],))
+            for _bc in self.bc:
+                for i, val in _bc.get_boundary_values().items():
+                    assert val == 0., "Only homogeneous Dirichlet BCs are supported so far."
+                    self.boundary_dof_vector[i] = 1.
+            self.matrix["primal"]["system_matrix"] = self.matrix["primal"]["system_matrix"].multiply((1.-self.boundary_dof_vector).reshape(-1,1)) + scipy.sparse.diags(self.boundary_dof_vector)
+            self.solve_factorized_primal = scipy.sparse.linalg.factorized(self.matrix["primal"]["system_matrix"].tocsc())
+
+            # build rhs matrix
+            self.matrix["primal"]["rhs_matrix"] = scipy.sparse.csr_matrix(
+                (
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                )
+            )
+            self.matrix["primal"]["rhs_matrix"][self.dofs["displacement"] :, self.dofs["displacement"] :] = self.matrix["primal"]["time_pressure"]
+            self.matrix["primal"]["rhs_matrix"][self.dofs["displacement"] :, : self.dofs["displacement"]] = self.matrix["primal"]["time_displacement"]
         else: 
             raise NotImplementedError("Only Mandel problem implemented so far.")
 
@@ -171,14 +203,14 @@ class FOM:
             if os.path.isfile(os.path.join(self.SAVE_DIR, f)) and re.match(pattern, f)
         ]
 
-        parameters = np.array([self.dt, self.T, self.theta, float(self.nu)])
+        parameters = np.array([self.dt, self.T, self.problem_name, *[float(x) for x in self.problem.__dict__.values()]])
 
         for file in files:
             tmp = np.load(file, allow_pickle=True)
             if np.array_equal(parameters, tmp["parameters"]):
                 np.savez(
                     file,
-                    velocity=self.Y["velocity"],
+                    displacement=self.Y["displacement"],
                     pressure=self.Y["pressure"],
                     parameters=parameters,
                     compression=True,
@@ -189,7 +221,7 @@ class FOM:
         file_name = "results/solution_" + str(len(files)).zfill(6) + ".npz"
         np.savez(
             file_name,
-            velocity=self.Y["velocity"],
+            displacement=self.Y["displacement"],
             pressure=self.Y["pressure"],
             parameters=parameters,
             compression=True,
@@ -198,6 +230,12 @@ class FOM:
 
     def load_solution(self):
         pattern = r"solution_\d{6}\.npz"
+
+        # check if self.SAVE_DIR exists
+        if not os.path.exists(self.SAVE_DIR):
+            os.makedirs(self.SAVE_DIR)
+            return False
+
         files = os.listdir(self.SAVE_DIR)
         files = [
             self.SAVE_DIR + f
@@ -205,22 +243,14 @@ class FOM:
             if os.path.isfile(os.path.join(self.SAVE_DIR, f)) and re.match(pattern, f)
         ]
 
-        parameters = np.array([self.dt, self.T, self.theta, float(self.nu)])
+        parameters = np.array([self.dt, self.T, self.problem_name, *[float(x) for x in self.problem.__dict__.values()]])
 
         for file in files:
             tmp = np.load(file)
             if np.array_equal(parameters, tmp["parameters"]):
-                self.Y["velocity"] = tmp["velocity"]
+                self.Y["displacement"] = tmp["displacement"]
                 self.Y["pressure"] = tmp["pressure"]
                 print(f"Loaded {file}")
-
-                # for i, _ in enumerate(self.time_points):
-                #     v, p = self.U.split()
-                #     v.vector().set_local(self.Y["velocity"][:, i])
-                #     c = plot(sqrt(dot(v, v)), title="Velocity")
-                #     plt.colorbar(c, orientation="horizontal")
-                #     plt.show()
-
                 return True
         return False
 
@@ -295,94 +325,19 @@ class FOM:
         print("Assembled linear operators")
 
     # Solve one time_step
-    def solve_primal_time_step(self, v_n_vector, p_n_vector):
-        # Newton update
-        dU = Function(self.V)
-        # self.U_n.vector()[:] = u_n_vector.
-        old_solution = np.concatenate((v_n_vector, p_n_vector))
-        self.U_n.vector().set_local(old_solution)
-        # Newton table
-        newton_table = rich.table.Table(title="Newton solver")
-        newton_table.add_column("Step", justify="right")
-        newton_table.add_column("Residuum", justify="right")
-        newton_table.add_column("Residuum fraction", justify="right")
-        newton_table.add_column("Assembled matrix", justify="center")
-        newton_table.add_column("Linesearch steps", justify="right")
+    def solve_primal_time_step(self, u_n_vector, p_n_vector):
+        old_solution = np.concatenate((u_n_vector, p_n_vector))
+        
+        rhs = self.matrix["primal"]["rhs_matrix"].dot(old_solution)
+        rhs[: self.dofs["displacement"]] += self.vector["primal"]["traction"]
 
-        # Newton iteration
-        system_matrix = None
-        system_rhs = assemble(-self.F)
-        for _bc in self.bc_homogen:
-            _bc.apply(system_rhs)
-        newton_residuum = np.linalg.norm(np.array(system_rhs), ord=np.Inf)
-
-        newton_step = 1
-
-        if newton_residuum < self.NEWTON_TOL:
-            print(f"Newton residuum: {newton_residuum}")
-
-        # Newton loop
-        while newton_residuum > self.NEWTON_TOL and newton_step < self.MAX_N_NEWTON_STEPS:
-            old_newton_residuum = newton_residuum
-
-            system_rhs = assemble(-self.F)
-            for _bc in self.bc_homogen:
-                _bc.apply(system_rhs)
-            newton_residuum = np.linalg.norm(np.array(system_rhs), ord=np.Inf)
-
-            if newton_residuum < self.NEWTON_TOL:
-                # print(f"Newton residuum: {newton_residuum}")
-                newton_table.add_row("-", f"{newton_residuum:.4e}", "-", "-", "-")
-
-                console = rich.console.Console()
-                console.print(newton_table)
-                break
-
-            if newton_residuum / old_newton_residuum > self.NONLINEAR_RHO:
-                # For debugging the derivative of the variational formulation:
-                # assert np.max(np.abs((assemble(A)-assemble(J)).array())) == 0., f"Handcoded derivative and auto-diff generated derivative should be the same. Difference is {np.max(np.abs((assemble(A)-assemble(J)).array()))}."
-                system_matrix = assemble(self.A)
-                for _bc in self.bc_homogen:
-                    _bc.apply(system_matrix, system_rhs)
-
-            solve(system_matrix, dU.vector(), system_rhs)
-
-            for linesearch_step in range(self.MAX_N_LINE_SEARCH_STEPS):
-                self.U.vector()[:] += dU.vector()[:]
-
-                system_rhs = assemble(-self.F)
-                for _bc in self.bc_homogen:
-                    _bc.apply(system_rhs)
-                new_newton_residuum = np.linalg.norm(np.array(system_rhs), ord=np.Inf)
-
-                if new_newton_residuum < newton_residuum:
-                    break
-                else:
-                    self.U.vector()[:] -= dU.vector()[:]
-
-                dU.vector()[:] *= self.LINE_SEARCH_DAMPING
-
-            assembled_matrix = newton_residuum / old_newton_residuum > self.NONLINEAR_RHO
-            # print(f"Newton step: {newton_step} | Newton residuum: {newton_residuum} | Residuum fraction: {newton_residuum/old_newton_residuum } | Assembled matrix: {assembled_matrix} | Linesearch steps: {linesearch_step}")
-            newton_table.add_row(
-                str(newton_step),
-                f"{newton_residuum:.4e}",
-                f"{round(newton_residuum/old_newton_residuum, 4):#.4f}",
-                str(assembled_matrix),
-                str(linesearch_step),
-            )
-            newton_step += 1
-
-        v, p = self.U.split()
-
-        # c = plot(sqrt(dot(v, v)), title="Velocity")
-        # plt.colorbar(c, orientation="horizontal")
-        # plt.show()
-
-        print("v shape = ", v.vector().get_local()[: self._V.dim()].shape)
-        print("p shape = ", p.vector().get_local()[self._V.dim() :].shape)
-        return v.vector().get_local()[: self._V.dim()], p.vector().get_local()[self._V.dim() :]
-
+        # apply homogeneous Dirichlet BC to right hand side
+        rhs = rhs * (1. - self.boundary_dof_vector)
+        
+        solution = self.solve_factorized_primal(rhs)
+    
+        return solution[: self.dofs["displacement"]], solution[self.dofs["displacement"] :]
+        
     def solve_dual_time_step(self, u_n_vector, z_n_vector):
         pass  # todo
 
@@ -392,56 +347,52 @@ class FOM:
             if self.load_solution():
                 return
 
-        # reset solution
-        self.U.vector()[:] = 0.0
-        # apply boundary conditions to initial condition
-        for _bc in self.bc:
-            _bc.apply(self.U.vector())
-        v, p = self.U.split()
-        self.Y["velocity"][:, 0] = np.zeros_like(v.vector().get_local()[: self.dofs["velocity"]])
-        self.Y["pressure"][:, 0] = np.zeros_like(p.vector().get_local()[self.dofs["velocity"] :])
-
-        print(f"MAX PRESSURE: {np.max(self.Y['pressure'][:, 0])}")
+        # zero initial condition
+        self.Y["displacement"][:, 0] = np.zeros((self.dofs["displacement"],))
+        self.Y["pressure"][:, 0] = np.zeros((self.dofs["pressure"],))
 
         for i, t in enumerate(self.time_points[1:]):
             n = i + 1
-            print(f"\n\nt = {round(t,5)}:\n==========")
-            self.Y["velocity"][:, n], self.Y["pressure"][:, n] = self.solve_primal_time_step(
-                self.Y["velocity"][:, n - 1], self.Y["pressure"][:, n - 1]
+            print(f"\n\nt = {round(t,5)}:\n===============")
+            self.Y["displacement"][:, n], self.Y["pressure"][:, n] = self.solve_primal_time_step(
+                self.Y["displacement"][:, n - 1], self.Y["pressure"][:, n - 1]
             )
 
         self.save_solution()
         self.save_vtk()
 
     def save_vtk(self):
-        folder = f"paraview/{self.dt}_{self.T}_{self.theta}_{float(self.nu)}/FOM"
+        folder = f"paraview/{self.dt}_{self.T}_{self.problem_name}/FOM"
+
+        print("Starting saving vtk files...")
+        print("   TODO: save pressure as vtk")
 
         if not os.path.exists(folder):
             os.makedirs(folder)
 
-        xdmffile_u = XDMFFile(f"{folder}/velocity.xdmf")
+        xdmffile_u = XDMFFile(f"{folder}/displacement.xdmf")
 
         for i, t in enumerate(self.time_points):
-            vtk_velocity = File(f"{folder}/velocity_{str(i)}.pvd")
+            vtk_displacement = File(f"{folder}/displacement_{str(i)}.pvd")
             vtk_pressure = File(f"{folder}/pressure_{str(i)}.pvd")
 
             # self.U_n.vector().set_local(solution)
-            v, p = self.U_n.split()
+            u, p = self.U_n.split()
             # v.vector().vec()[:self.dofs["velocity"]] = self.Y["velocity"][:, i]
 
-            v.vector().set_local(self.Y["velocity"][:, i])
+            u.vector().set_local(self.Y["displacement"][:, i])
             p.vector().set_local(self.Y["pressure"][:, i])
 
             #
-            xdmffile_u.write(v, t)
+            xdmffile_u.write(u, t)
 
             # c = plot(sqrt(dot(v, v)), title="Velocity")
             # plt.colorbar(c, orientation="horizontal")
             # plt.show()
 
-            v.rename("velocity", "solution")
+            u.rename("displacement", "solution")
             p.rename("pressure", "solution")
-            vtk_velocity.write(v)
+            vtk_displacement.write(u)
 
             # v.rename('velocity', 'solution')
             # p.rename('pressure', 'solution')
@@ -451,3 +402,5 @@ class FOM:
 
             # vtkfile.write(v, "velocity")
             # # vtkfile.write(p, "pressure")
+        
+        print("Done.")

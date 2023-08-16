@@ -56,6 +56,5 @@ TOTAL_ENERGY = {
     },
 }
 
-print(Mandel())
 fom = FOM(t, T, dt, Mandel())
 fom.solve_primal(force_recompute=False)
