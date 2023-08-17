@@ -258,12 +258,12 @@ class ROM:
 
         # for i in range(self.POD["primal"]["pressure"]["basis"].shape[1]):
         #     u, p = self.fom.U_n.split()
-        #     self.fom.U_n.vector().set_local(np.concatenate(
-        #         (
-        #             self.POD["primal"]["displacement"]["basis"][:,0],
-        #             self.POD["primal"]["pressure"]["basis"][:,i]
-        #         )
-        #     ))
+            # self.fom.U_n.vector().set_local(np.concatenate(
+            #     (
+            #         self.POD["primal"]["displacement"]["basis"][:,0],
+            #         self.POD["primal"]["pressure"]["basis"][:,i]
+            #     )
+            # ))
         #     c = plot(p, title=f"{i}th pressure POD magnitude")
         #     plt.colorbar(c, orientation="horizontal")
         #     plt.show()
@@ -369,6 +369,9 @@ class ROM:
                 self.POD["primal"]["displacement"]["basis"].shape[1] :
             ]
 
+        
+
+        
             # print("BREAKING ROM LOOP FOR DEBUGGING")
             # break
 
@@ -405,8 +408,10 @@ class ROM:
                 plt.colorbar(c, orientation="horizontal")
 
                 plt.show()
+
             """
 
+        self.save_vtk()
         # plt.semilogy(self.DEBUG_RES)
         # plt.show()
 
@@ -482,52 +487,44 @@ class ROM:
         print(f"Total FOM solves: {fom_solves}")
 
     def save_vtk(self):
-        folder = f"paraview/{self.fom.dt}_{self.fom.T}_{self.fom.theta}_{float(self.fom.nu)}/ROM"
+        folder = f"paraview/{self.fom.dt}_{self.fom.T}_{self.fom.problem_name}/ROM"
 
         if not os.path.exists(folder):
             os.makedirs(folder)
 
-        lifting = self.lifting["velocity"]
+
+        print("Starting saving ROM vtk files...")
 
         for i, t in list(enumerate(self.fom.time_points))[::10]:
-            print(f"PLOT {i}-th solution")
-            vtk_velocity = File(f"{folder}/velocity_{str(i)}.pvd")
+            vtk_displacement = File(f"{folder}/displacement_{str(i)}.pvd")
             vtk_pressure = File(f"{folder}/pressure_{str(i)}.pvd")
 
-            # DEBUG HF: remove lifting to see resiudal
-            sol_velocity = (
+            sol_displacement = (
                 self.project_vector(
-                    self.solution["primal"]["velocity"][:, i], type="primal", quantity="velocity"
+                    self.solution["primal"]["displacement"][:, i], type="primal", quantity="displacement"
                 )
-                + self.lifting["velocity"]
             )
             sol_pressure = self.project_vector(
                 self.solution["primal"]["pressure"][:, i], type="primal", quantity="pressure"
             )
-            v, p = self.fom.U_n.split()
+            u, p = self.fom.U_n.split()
 
             self.fom.U_n.vector().set_local(
                 np.concatenate(
                     (
-                        sol_velocity,
+                        sol_displacement,
                         sol_pressure,
                     )
                 )
             )
 
-            vtk_velocity << v
-            vtk_pressure << p
+            u.rename("displacement", "solution")
+            p.rename("pressure", "solution")
+            vtk_displacement.write(u)
+            vtk_pressure.write(p)
 
-            # subplot for velocuty and pressure
-            plt.figure(figsize=(8, 5.5))
-            plt.subplot(2, 1, 1)
-            c = plot(sqrt(dot(v, v)), title=f"Velocity @ t={t:.2}")
-            plt.colorbar(c, orientation="horizontal")
-            plt.subplot(2, 1, 2)
-            c = plot(p, title=f"Pressure @ t={t:.2}")
-            plt.colorbar(c, orientation="horizontal")
+        print("Done.")
 
-            plt.show()
 
     def compute_drag_lift(self):
         offset = 100

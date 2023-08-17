@@ -373,44 +373,33 @@ class FOM:
 
     def save_vtk(self):
         folder = f"paraview/{self.dt}_{self.T}_{self.problem_name}/FOM"
+        # check if folder exists else create it 
+        if not os.path.exists(folder):
+            os.makedirs(folder)
 
-        print("Starting saving vtk files...")
-        print("   TODO: save pressure as vtk")
+
+        print("Starting saving FOM vtk files...")
 
         if not os.path.exists(folder):
             os.makedirs(folder)
 
-        xdmffile_u = XDMFFile(f"{folder}/displacement.xdmf")
 
-        for i, t in enumerate(self.time_points):
+        # only each 10th time step
+        for i, t in list(enumerate(self.time_points))[::10]:
             vtk_displacement = File(f"{folder}/displacement_{str(i)}.pvd")
             vtk_pressure = File(f"{folder}/pressure_{str(i)}.pvd")
 
-            # self.U_n.vector().set_local(solution)
             u, p = self.U_n.split()
-            # v.vector().vec()[:self.dofs["velocity"]] = self.Y["velocity"][:, i]
 
-            u.vector().set_local(self.Y["displacement"][:, i])
-            p.vector().set_local(self.Y["pressure"][:, i])
-
-            #
-            xdmffile_u.write(u, t)
-
-            # c = plot(sqrt(dot(v, v)), title="Velocity")
-            # plt.colorbar(c, orientation="horizontal")
-            # plt.show()
+            self.U_n.vector().set_local(np.concatenate(
+                (
+                    self.Y["displacement"][:, i],
+                    self.Y["pressure"][:, i]
+                )
+            ))
 
             u.rename("displacement", "solution")
             p.rename("pressure", "solution")
             vtk_displacement.write(u)
-
-            # v.rename('velocity', 'solution')
-            # p.rename('pressure', 'solution')
-
-            # vtk_velocity << v
-            # vtk_pressure << p
-
-            # vtkfile.write(v, "velocity")
-            # # vtkfile.write(p, "pressure")
-
+            vtk_pressure.write(p)
         print("Done.")
