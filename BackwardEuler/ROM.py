@@ -142,20 +142,12 @@ class ROM:
     def project_vector(self, vector, type, quantity):
         return np.dot(self.POD[type][quantity]["basis"], vector)
 
-    # TODO: consider also supremizer here
     def reduce_matrix(self, matrix, type, quantity0, quantity1):
         """
-        OLD:
-            |   A_uu    |   A_up    |
-        A = | --------- | --------- |
-            |   A_pu    |   A_pp    |
-
-        NEW: (is always better - B.S.)
-
         A_N = Z_{q0}^T A Z_{q1}
 
         REMARK:
-        - A_N is reduced submatrix, c.f. OLD A
+        - A_N is reduced submatrix
         """
 
         reduced_matrix = self.POD[type][quantity0]["basis"].T.dot(
@@ -163,16 +155,16 @@ class ROM:
         )
         return reduced_matrix
 
-    def update_matrices(self, type):
-        # TODO: update when matrix are known
+    # def update_matrices(self, type):
+    #     # TODO: update when matrix are known
 
-        # self.
+    #     # self.
 
-        for key in self.matrix[type].keys():
-            self.matrix[type][key] = self.reduce_matrix(self.fom.matrix[type][key], type)
+    #     for key in self.matrix[type].keys():
+    #         self.matrix[type][key] = self.reduce_matrix(self.fom.matrix[type][key], type)
 
-    def update_rhs(self, type):
-        self.RHS[type] = np.dot(self.POD[type]["basis"].T, self.fom.RHS)
+    # def update_rhs(self, type):
+    #     self.RHS[type] = np.dot(self.POD[type]["basis"].T, self.fom.RHS)
 
     def init_POD(self):
         # primal POD
@@ -185,12 +177,24 @@ class ROM:
         print("DISPLACEMENT POD size:   ", self.POD["primal"]["displacement"]["basis"].shape[1])
         print("PRESSURE POD size:   ", self.POD["primal"]["pressure"]["basis"].shape[1])
 
-        # for i in range(self.POD["primal"]["velocity"]["basis"].shape[1]):
-        #     v, p = self.fom.U_n.split()
-        #     v.vector().set_local(self.POD["primal"]["velocity"]["basis"][:,i])
-        #     c = plot(sqrt(dot(v, v)), title="Velocity")
-        #     plt.colorbar(c, orientation="horizontal")
-        #     plt.show()
+        for i in range(self.POD["primal"]["displacement"]["basis"].shape[1]):
+            u, p = self.fom.U_n.split()
+            u.vector().set_local(self.POD["primal"]["displacement"]["basis"][:,i])
+            c = plot(sqrt(dot(u, u)), title=f"{i}th displacement POD magnitude")
+            plt.colorbar(c, orientation="horizontal")
+            plt.show()
+
+        for i in range(self.POD["primal"]["pressure"]["basis"].shape[1]):
+            u, p = self.fom.U_n.split()
+            self.fom.U_n.vector().set_local(np.concatenate(
+                (
+                    self.POD["primal"]["displacement"]["basis"][:,0],
+                    self.POD["primal"]["pressure"]["basis"][:,i]
+                )    
+            ))
+            c = plot(p, title=f"{i}th pressure POD magnitude")
+            plt.colorbar(c, orientation="horizontal")
+            plt.show()
 
 
     def compute_reduced_matrices(self):

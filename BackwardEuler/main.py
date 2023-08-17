@@ -56,9 +56,14 @@ TOTAL_ENERGY = {
     },
 }
 
+# ----------- FOM -----------
+start_time_fom = time.time()
 fom = FOM(t, T, dt, Mandel())
 fom.solve_primal(force_recompute=False)
+end_time_fom = time.time()
 
+# ----------- ROM -----------
+start_time_rom = time.time()
 rom = ROM(
     fom,
     REL_ERROR_TOL=REL_ERROR_TOL,
@@ -75,3 +80,9 @@ rom.compute_reduced_matrices()
 print("finished matrix reduction")
 
 rom.solve_primal()
+end_time_rom = time.time()
+
+# ----------- Results -----------
+print("FOM time: ", end_time_fom - start_time_fom)
+print("ROM time: ", end_time_rom - start_time_rom)
+print("Speedup:  ", (end_time_fom - start_time_fom) / (end_time_rom - start_time_rom))

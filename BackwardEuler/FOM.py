@@ -167,8 +167,9 @@ class FOM:
                 for i, val in _bc.get_boundary_values().items():
                     assert val == 0., "Only homogeneous Dirichlet BCs are supported so far."
                     self.boundary_dof_vector[i] = 1.
+            # apply homogeneous Dirichlet BC to system matrix
             self.matrix["primal"]["system_matrix"] = self.matrix["primal"]["system_matrix"].multiply((1.-self.boundary_dof_vector).reshape(-1,1)) + scipy.sparse.diags(self.boundary_dof_vector)
-            self.solve_factorized_primal = scipy.sparse.linalg.factorized(self.matrix["primal"]["system_matrix"].tocsc())
+            self.solve_factorized_primal = scipy.sparse.linalg.factorized(self.matrix["primal"]["system_matrix"].tocsc()) # NOTE: LU factorization is dense
 
             # build rhs matrix
             self.matrix["primal"]["rhs_matrix"] = scipy.sparse.csr_matrix(
@@ -256,73 +257,6 @@ class FOM:
 
     def solve_functional_trajectory(self):
         pass  # TODO
-
-    # assemble system matrices and rhs
-    def assemble_system(self, force_recompute=False):
-        pass  # TODO
-
-    def assemble_lifting_matrices(self, lifting):
-        solution = np.concatenate(
-            (
-                lifting["velocity"],
-                np.zeros((self.dofs["pressure"],)),
-            )
-        )
-        U_lifting = Function(self.V)  # lifting function
-        U_lifting.vector().set_local(solution)
-        dv, _ = split(U_lifting)
-
-        U = TrialFunction(self.V)
-        Phi_U = TestFunctions(self.V)
-
-        # Split functions into velocity and pressure components
-        v, _ = split(U)
-        phi_v, _ = Phi_U
-
-        # assemble Frechet derivative C^l := C(l)
-        self.lifting_matrix = scipy.sparse.csr_matrix(
-            as_backend_type(
-                assemble(dot(dot(grad(v), dv) + dot(grad(dv), v), phi_v) * dx)
-            )
-            .mat()
-            .getValuesCSR()[::-1],
-            shape=(
-                self.dofs["velocity"] + self.dofs["pressure"],
-                self.dofs["velocity"] + self.dofs["pressure"],
-            ),
-        )[: self.dofs["velocity"], : self.dofs["velocity"]]
-
-        # assemble convection term evaluated at lifting
-        self.lifting_rhs = (
-            # DEBUG HF: remove duplicate
-            # -np.array(
-            #     self.dt * self.nu * self.matrix["primal"]["laplace"].dot(lifting["velocity"]),
-            #     dtype=np.float64,
-            # )
-            -self.dt
-            * np.array(
-                assemble(
-                    Constant(self.nu) * inner(grad(dv), grad(phi_v)) * dx
-                    + dot(dot(grad(dv), dv), phi_v) * dx
-                )
-            )[: self.dofs["velocity"]]
-        )
-        print("Assembled lifting matrices + rhs")
-
-    def assemble_linear_operators(self):
-        self.velocity_lin_operator_theta = (
-            self.matrix["primal"]["mass"]
-            + float(self.dt * self.theta * self.nu) * self.matrix["primal"]["laplace"]
-            + float(self.dt * self.theta) * self.lifting_matrix
-        )
-        self.velocity_lin_operator_one_minus_theta = (
-            self.matrix["primal"]["mass"]
-            - float(self.dt * (1.0 - self.theta) * self.nu) * self.matrix["primal"]["laplace"]
-            - float(self.dt * (1.0 - self.theta)) * self.lifting_matrix
-        )
-        self.pressure_lin_operator = -self.dt * self.matrix["primal"]["pressure"]
-
-        print("Assembled linear operators")
 
     # Solve one time_step
     def solve_primal_time_step(self, u_n_vector, p_n_vector):
