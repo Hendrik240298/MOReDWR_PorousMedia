@@ -196,6 +196,8 @@ class ROM:
             plt.colorbar(c, orientation="horizontal")
             plt.show()
 
+        # TODO: save POD basis as vtks instead of plotting them
+
 
     def compute_reduced_matrices(self):
         self.vector["primal"]["traction"] = self.reduce_vector(self.fom.vector["primal"]["traction"], "primal", "displacement")
