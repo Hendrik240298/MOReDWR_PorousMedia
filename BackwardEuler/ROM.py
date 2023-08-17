@@ -136,6 +136,35 @@ class ROM:
         plt.grid()
         plt.show()
 
+    def plot_bottom_solution(self):
+        times = self.fom.special_times.copy()
+        for i, t in enumerate(self.fom.time_points):
+            if np.abs(t-times[0]) <= 1e-4:
+                times.pop(0)
+                plt.plot(self.fom.bottom_x_u, self.bottom_matrix_u.dot(self.solution["primal"]["displacement"][:, i]), label=f"t = {t} (FOM)")
+                plt.plot(self.fom.bottom_x_u, self.bottom_matrix_u.dot(self.solution["primal"]["displacement"][:, i]), linestyle="--", label=f"t = {t} (ROM)")
+                if len(times) == 0:
+                    break
+        plt.xlabel("x")
+        plt.ylabel(r"$u_x(x,0)$")
+        plt.title("x-Displacement at bottom boundary")
+        plt.legend()
+        plt.show()
+
+        times = self.fom.special_times.copy()
+        for i, t in enumerate(self.fom.time_points):
+            if np.abs(t-times[0]) <= 1e-4:
+                times.pop(0)
+                plt.plot(self.fom.bottom_x_p, self.bottom_matrix_p.dot(self.solution["primal"]["pressure"][:, i]), label=f"t = {t} (FOM)")
+                plt.plot(self.fom.bottom_x_p, self.bottom_matrix_p.dot(self.solution["primal"]["pressure"][:, i]), linestyle="--", label=f"t = {t} (ROM)")
+                if len(times) == 0:
+                    break
+        plt.xlabel("x")
+        plt.ylabel(r"$p(x,0)$")
+        plt.title("Pressure at bottom boundary")
+        plt.legend()
+        plt.show()
+
     def iPOD(self, snapshot, type, quantity):
         # type is either "primal" or "dual"
 
@@ -327,6 +356,14 @@ class ROM:
                 [np.zeros_like(matrix_stress), np.zeros_like(matrix_elasto_pressure)],
                 [matrix_time_displacement, matrix_time_pressure],
             ]
+        )
+
+        # reduce matrices for evaluation of the solution at the bottom boundary
+        self.bottom_matrix_u = self.fom.bottom_matrix_u.dot(
+            self.POD["primal"]["displacement"]["basis"]
+        )
+        self.bottom_matrix_p = self.fom.bottom_matrix_p.dot(
+            self.POD["primal"]["pressure"]["basis"]
         )
 
     def solve_primal(self):
