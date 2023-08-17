@@ -8,7 +8,7 @@ from multiprocessing import Process, Queue
 
 import dolfin
 import matplotlib.pyplot as plt
-import numpy as np  
+import numpy as np
 import scipy
 from dolfin import *
 from fenics import *
@@ -63,6 +63,78 @@ class ROM:
 
         self.solution = {"primal": {"displacement": None, "pressure": None}}
         self.functional_values = np.zeros((self.fom.dofs["time"] - 1,))
+
+    def compute_error(self):
+        error = {
+            "displacement": np.zeros((self.fom.dofs["time"] - 1,)),
+            "pressure": np.zeros((self.fom.dofs["time"] - 1,)),
+        }
+
+        # check fom.Y and rom.solution shape
+        print("fom.Y shape: ", self.fom.Y["displacement"].shape)
+        print("rom.solution shape: ", self.solution["primal"]["displacement"].shape)
+
+        for i in range(self.fom.dofs["time"] - 1):
+            projected_solution_disp = self.project_vector(
+                self.solution["primal"]["displacement"][:, i],
+                type="primal",
+                quantity="displacement",
+            )
+            projected_solution_pres = self.project_vector(
+                self.solution["primal"]["pressure"][:, i], type="primal", quantity="pressure"
+            )
+            error["displacement"][i] = np.linalg.norm(
+                projected_solution_disp - self.fom.Y["displacement"][:, i]
+            ) / np.linalg.norm(self.fom.Y["displacement"][:, i])
+            error["pressure"][i] = np.linalg.norm(
+                projected_solution_pres - self.fom.Y["pressure"][:, i]
+            ) / np.linalg.norm(self.fom.Y["pressure"][:, i])
+
+        # plot results in subplots
+        fig, ax = plt.subplots(2, 1, figsize=(10, 10))
+        ax[0].semilogy(self.fom.time_points[1:], error["displacement"] * 100, label="displacement")
+        ax[0].set_xlabel("time")
+        ax[0].set_ylabel("displacement - error [%]")
+        ax[0].grid()
+        ax[1].semilogy(self.fom.time_points[1:], error["pressure"] * 100, label="pressure")
+        ax[1].set_xlabel("time")
+        ax[1].set_ylabel("pressure - error [%]")
+        ax[1].grid()
+        plt.show()
+
+    def solve_functional_trajectory(self):
+        self.functional_values = np.zeros((self.fom.dofs["time"] - 1,))
+        for i in range(self.fom.dofs["time"] - 1):
+            self.functional_values[i] = self.vector["primal"]["pressure_down"].dot(
+                self.solution["primal"]["pressure"][:, i + 1]
+            )
+
+        self.functional = np.sum(self.functional_values) * self.fom.dt
+        print(f"Cost functional - FOM : {self.fom.functional:.4e}")
+        print(f"Cost functional - ROM : {self.functional:.4e}")
+
+        # print cost functional trajectory
+        plt.plot(self.fom.time_points[1:], self.fom.functional_values, label="FOM")
+        plt.plot(self.fom.time_points[1:], self.functional_values, linestyle="--", label="ROM")
+
+        plt.xlabel("time")
+        plt.ylabel("cost functional")
+        plt.legend()
+        plt.grid()
+        plt.show()
+
+        plt.plot(
+            self.fom.time_points[1:],
+            100
+            * np.abs(self.fom.functional_values - self.functional_values)
+            / np.abs(self.fom.functional_values),
+            label="relative error",
+        )
+        plt.xlabel("time")
+        plt.ylabel("relative error [%]")
+        plt.legend()
+        plt.grid()
+        plt.show()
 
     def iPOD(self, snapshot, type, quantity):
         # type is either "primal" or "dual"
@@ -177,30 +249,35 @@ class ROM:
         print("DISPLACEMENT POD size:   ", self.POD["primal"]["displacement"]["basis"].shape[1])
         print("PRESSURE POD size:   ", self.POD["primal"]["pressure"]["basis"].shape[1])
 
-        for i in range(self.POD["primal"]["displacement"]["basis"].shape[1]):
-            u, p = self.fom.U_n.split()
-            u.vector().set_local(self.POD["primal"]["displacement"]["basis"][:,i])
-            c = plot(sqrt(dot(u, u)), title=f"{i}th displacement POD magnitude")
-            plt.colorbar(c, orientation="horizontal")
-            plt.show()
+        # for i in range(self.POD["primal"]["displacement"]["basis"].shape[1]):
+        #     u, p = self.fom.U_n.split()
+        #     u.vector().set_local(self.POD["primal"]["displacement"]["basis"][:,i])
+        #     c = plot(sqrt(dot(u, u)), title=f"{i}th displacement POD magnitude")
+        #     plt.colorbar(c, orientation="horizontal")
+        #     plt.show()
 
-        for i in range(self.POD["primal"]["pressure"]["basis"].shape[1]):
-            u, p = self.fom.U_n.split()
-            self.fom.U_n.vector().set_local(np.concatenate(
-                (
-                    self.POD["primal"]["displacement"]["basis"][:,0],
-                    self.POD["primal"]["pressure"]["basis"][:,i]
-                )    
-            ))
-            c = plot(p, title=f"{i}th pressure POD magnitude")
-            plt.colorbar(c, orientation="horizontal")
-            plt.show()
+        # for i in range(self.POD["primal"]["pressure"]["basis"].shape[1]):
+        #     u, p = self.fom.U_n.split()
+        #     self.fom.U_n.vector().set_local(np.concatenate(
+        #         (
+        #             self.POD["primal"]["displacement"]["basis"][:,0],
+        #             self.POD["primal"]["pressure"]["basis"][:,i]
+        #         )
+        #     ))
+        #     c = plot(p, title=f"{i}th pressure POD magnitude")
+        #     plt.colorbar(c, orientation="horizontal")
+        #     plt.show()
 
         # TODO: save POD basis as vtks instead of plotting them
 
-
     def compute_reduced_matrices(self):
-        self.vector["primal"]["traction"] = self.reduce_vector(self.fom.vector["primal"]["traction"], "primal", "displacement")
+        self.vector["primal"]["traction"] = self.reduce_vector(
+            self.fom.vector["primal"]["traction"], "primal", "displacement"
+        )
+
+        self.vector["primal"]["pressure_down"] = self.reduce_vector(
+            self.fom.vector["primal"]["pressure_down"], "primal", "pressure"
+        )
 
         matrix_stress = self.reduce_matrix(
             self.fom.matrix["primal"]["stress"],
@@ -242,7 +319,7 @@ class ROM:
         )
 
         # TODO: factorize reduced system matrix
-        #self.solve_factorized_primal = scipy.sparse.linalg.factorized(self.matrix["primal"]["system_matrix"])
+        # self.solve_factorized_primal = scipy.sparse.linalg.factorized(self.matrix["primal"]["system_matrix"])
 
         # build rhs matrix from blocks
         self.matrix["primal"]["rhs_matrix"] = np.block(
@@ -260,7 +337,7 @@ class ROM:
         self.solution["primal"]["pressure"] = np.zeros(
             (self.POD["primal"]["pressure"]["basis"].shape[1], self.fom.dofs["time"])
         )
-    
+
         # old timestep
         solution = np.concatenate(
             (
@@ -276,12 +353,21 @@ class ROM:
 
             solution = np.linalg.solve(
                 self.matrix["primal"]["system_matrix"],
-                self.matrix["primal"]["rhs_matrix"].dot(solution) \
-                    + np.concatenate((self.vector["primal"]["traction"], np.zeros((self.POD["primal"]["pressure"]["basis"].shape[1],))))
+                self.matrix["primal"]["rhs_matrix"].dot(solution)
+                + np.concatenate(
+                    (
+                        self.vector["primal"]["traction"],
+                        np.zeros((self.POD["primal"]["pressure"]["basis"].shape[1],)),
+                    )
+                ),
             )
 
-            self.solution["primal"]["displacement"][:, n] = solution[ : self.POD["primal"]["displacement"]["basis"].shape[1]]
-            self.solution["primal"]["pressure"][:, n] = solution[self.POD["primal"]["displacement"]["basis"].shape[1] : ]
+            self.solution["primal"]["displacement"][:, n] = solution[
+                : self.POD["primal"]["displacement"]["basis"].shape[1]
+            ]
+            self.solution["primal"]["pressure"][:, n] = solution[
+                self.POD["primal"]["displacement"]["basis"].shape[1] :
+            ]
 
             # print("BREAKING ROM LOOP FOR DEBUGGING")
             # break
@@ -296,7 +382,7 @@ class ROM:
                 sol_pressure = self.project_vector(
                     self.solution["primal"]["pressure"][:, i], type="primal", quantity="pressure"
                 )
-                
+
                 v, p = self.fom.U_n.split()
 
                 self.fom.U_n.vector().set_local(
@@ -320,7 +406,7 @@ class ROM:
 
                 plt.show()
             """
-                
+
         # plt.semilogy(self.DEBUG_RES)
         # plt.show()
 
@@ -409,9 +495,12 @@ class ROM:
             vtk_pressure = File(f"{folder}/pressure_{str(i)}.pvd")
 
             # DEBUG HF: remove lifting to see resiudal
-            sol_velocity = self.project_vector(
-                self.solution["primal"]["velocity"][:, i], type="primal", quantity="velocity"
-            ) + self.lifting["velocity"]
+            sol_velocity = (
+                self.project_vector(
+                    self.solution["primal"]["velocity"][:, i], type="primal", quantity="velocity"
+                )
+                + self.lifting["velocity"]
+            )
             sol_pressure = self.project_vector(
                 self.solution["primal"]["pressure"][:, i], type="primal", quantity="pressure"
             )
@@ -440,7 +529,6 @@ class ROM:
 
             plt.show()
 
-
     def compute_drag_lift(self):
         offset = 100
 
@@ -448,16 +536,20 @@ class ROM:
         self.lift_force = np.zeros((self.fom.dofs["time"],))
 
         for i, t in list(enumerate(self.fom.time_points)):
-            sol_velocity = self.project_vector(
-                self.solution["primal"]["velocity"][:, i], type="primal", quantity="velocity"
-            ) + self.lifting["velocity"]
+            sol_velocity = (
+                self.project_vector(
+                    self.solution["primal"]["velocity"][:, i], type="primal", quantity="velocity"
+                )
+                + self.lifting["velocity"]
+            )
             sol_pressure = self.project_vector(
                 self.solution["primal"]["pressure"][:, i], type="primal", quantity="pressure"
             )
-            self.drag_force[i], self.lift_force[i] = self.fom.compute_drag_lift_time_step(sol_velocity, sol_pressure)
+            self.drag_force[i], self.lift_force[i] = self.fom.compute_drag_lift_time_step(
+                sol_velocity, sol_pressure
+            )
 
-
-        # plot results in subplots 
+        # plot results in subplots
         # fig, ax = plt.subplots(2, 1, figsize=(10, 10))
         # ax[0].plot(self.fom.time_points[offset:], self.drag_force[offset:], label="drag")
         # ax[0].set_xlabel("time")
