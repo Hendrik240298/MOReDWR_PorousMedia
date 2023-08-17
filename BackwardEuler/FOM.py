@@ -230,6 +230,47 @@ class FOM:
             self.matrix["primal"]["rhs_matrix"][
                 self.dofs["displacement"] :, : self.dofs["displacement"]
             ] = self.matrix["primal"]["time_displacement"]
+
+            # get all x-displacement DoFs and coordinates at bottom boundary
+            self.bottom_dofs_u = []
+            self.bottom_x_u = []
+            for i, dof in enumerate(self.V.tabulate_dof_coordinates()[: self.V.sub(0).sub(0).dim()]):
+                if dof[1] == 0.0:
+                    self.bottom_dofs_u.append(i)
+                    self.bottom_x_u.append(dof[0])
+
+            # sort bottom_dofs_u and bottom_x_u by x-coordinate
+            self.bottom_dofs_u, self.bottom_x_u = zip(
+               *sorted(zip(self.bottom_dofs_u, self.bottom_x_u), key=lambda x: x[1])
+            ) 
+
+            self.bottom_matrix_u = scipy.sparse.csr_matrix(
+                (
+                    len(self.bottom_dofs_u),
+                    self.dofs["displacement"],
+                )
+            )
+            for i, dof in enumerate(self.bottom_dofs_u):
+                self.bottom_matrix_u[i, dof] = 1.0
+
+            # get all pressure DoFs and coordinates at bottom boundary
+            self.bottom_dofs_p = []
+            self.bottom_x_p = []
+            for i, dof in enumerate(self.V.tabulate_dof_coordinates()[self.dofs["displacement"] :]):
+                if dof[1] == 0.0:
+                    self.bottom_dofs_p.append(i)
+                    self.bottom_x_p.append(dof[0])
+            self.bottom_matrix_p = scipy.sparse.csr_matrix(
+                (
+                    len(self.bottom_dofs_p),
+                    self.dofs["pressure"],
+                )
+            )
+            for i, dof in enumerate(self.bottom_dofs_p):
+                self.bottom_matrix_p[i, dof] = 1.0
+
+            # times for plotting solution at bottom boundary
+            self.special_times = [1000., 5000., 10000., 100000.,  500000., 5000000.]
         else:
             raise NotImplementedError("Only Mandel problem implemented so far.")
 
@@ -333,6 +374,33 @@ class FOM:
         # # print cost functional trajectory
         # plt.plot(self.time_points[1:], self.functional_values)
         # plt.show()
+
+    def plot_bottom_solution(self):
+        times = self.special_times.copy()
+        for i, t in enumerate(self.time_points):
+            if np.abs(t-times[0]) <= 1e-4:
+                times.pop(0)
+                plt.plot(self.bottom_x_u, self.bottom_matrix_u.dot(self.Y["displacement"][:, i]), label=f"t = {t}")
+                if len(times) == 0:
+                    break
+        plt.xlabel("x")
+        plt.ylabel(r"$u_x(x,0)$")
+        plt.title("x-Displacement at bottom boundary")
+        plt.legend()
+        plt.show()
+
+        times = self.special_times.copy()
+        for i, t in enumerate(self.time_points):
+            if np.abs(t-times[0]) <= 1e-4:
+                times.pop(0)
+                plt.plot(self.bottom_x_p, self.bottom_matrix_p.dot(self.Y["pressure"][:, i]), label=f"t = {t}")
+                if len(times) == 0:
+                    break
+        plt.xlabel("x")
+        plt.ylabel(r"$p(x,0)$")
+        plt.title("Pressure at bottom boundary")
+        plt.legend()
+        plt.show()
 
     # Solve one time_step
     def solve_primal_time_step(self, u_n_vector, p_n_vector):

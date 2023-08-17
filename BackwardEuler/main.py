@@ -69,6 +69,7 @@ fom.solve_primal(force_recompute=False)
 end_time_fom = time.time()
 
 fom.solve_functional_trajectory()
+#fom.plot_bottom_solution()
 
 
 # ----------- ROM -----------
@@ -94,6 +95,7 @@ end_time_rom = time.time()
 # ----------- ROM Error -----------
 rom.compute_error()
 rom.solve_functional_trajectory()
+rom.plot_bottom_solution()
 
 # ----------- Results -----------
 print("FOM time: ", end_time_fom - start_time_fom)
