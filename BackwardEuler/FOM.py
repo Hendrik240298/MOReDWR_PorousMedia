@@ -186,6 +186,10 @@ class FOM:
                 assemble(Constant(self.traction_y_biot) * Phi[1] * self.ds_up)
             )[: self.dofs["displacement"]]
 
+            self.vector["primal"]["traction_full_vector"] = np.array(
+                assemble(Constant(self.traction_y_biot) * Phi[1] * self.ds_up)
+            )
+
             # pressure vector for cost functional (paper JR p. 25)
             self.vector["primal"]["pressure_down"] = np.array(
                 assemble(Phi[self.dim] * self.ds_down)
@@ -214,6 +218,9 @@ class FOM:
             self.matrix["primal"]["system_matrix"][
                 self.dofs["displacement"]:, self.dofs["displacement"]:
             ] += self.matrix["primal"]["time_pressure"]
+
+            # system matrix wo boundary conditions
+            self.matrix["primal"]["system_matrix_no_bc"] = self.matrix["primal"]["system_matrix"].copy()
 
             # dual system matrix as transposed primal system matrix
             self.matrix["dual"]["system_matrix"] = self.matrix["primal"]["system_matrix"].transpose()
@@ -418,9 +425,9 @@ class FOM:
         for i in range(self.dofs["time"] - 1):
             self.functional_values[i] = self.vector["primal"]["pressure_down"].dot(
                 self.Y["primal"]["pressure"][:, i + 1]
-            )
+            ) * self.dt
 
-        self.functional = np.sum(self.functional_values) * self.dt
+        self.functional = np.sum(self.functional_values)
         # print cost functional in scientific notation
         # print(f"Cost functional: {self.functional:.4e}")
 
@@ -511,7 +518,7 @@ class FOM:
         # primal solution
 
         # derivative of CF on rhs
-        dual_rhs = np.concatenate(
+        dual_rhs = self.dt * np.concatenate(
             (np.zeros_like(z_u_nn_vector), self.vector["primal"]["pressure_down"]))
 
         # ATTENTION: NO NEED FOR PRIMAL SOLUTION FOR LINEAR PROBLEMS
@@ -556,29 +563,29 @@ class FOM:
                                        1] = np.zeros((self.dofs["displacement"],))
         self.Y["dual"]["pressure"][:, -1] = np.zeros((self.dofs["pressure"],))
 
-        print(np.linalg.norm(self.Y["dual"]["displacement"][:, -1]))
-        print(np.linalg.norm(self.Y["dual"]["pressure"][:, -1]))
+        # print(np.linalg.norm(self.Y["dual"]["displacement"][:, -1]))
+        # print(np.linalg.norm(self.Y["dual"]["pressure"][:, -1]))
 
         for i, t in list(enumerate(self.time_points[:-1]))[::-1]:
             n = i
-            print(f"\n n = {n}; t = {round(t,5)}")
+            # print(f"\n n = {n}; t = {round(t,5)}")
             self.Y["dual"]["displacement"][:, n], self.Y["dual"]["pressure"][:, n] = self.solve_dual_time_step(
                 self.Y["dual"]["displacement"][:, n +
                                                1], self.Y["dual"]["pressure"][:, n + 1]
             )
-            print(np.linalg.norm(self.Y["dual"]["displacement"][:, n]))
-            print(np.linalg.norm(self.Y["dual"]["pressure"][:, n]))
+            # print(np.linalg.norm(self.Y["dual"]["displacement"][:, n]))
+            # print(np.linalg.norm(self.Y["dual"]["pressure"][:, n]))
 
             # plot dual solution
             u, p = self.U_n.split()
             self.U_n.vector().set_local(np.concatenate(
                 (
-                    self.Y["dual"]["displacement"][:, i],
-                    self.Y["dual"]["pressure"][:, i]
+                    self.Y["dual"]["displacement"][:, n],
+                    self.Y["dual"]["pressure"][:, n]
                 )
             ))
 
-            if i % 250 == 0 or i > 4990:
+            if i == 0 or i == 4999:
                 # plot u and p in a subplot
                 plt.subplot(2, 1, 1)
                 c = plot(u, title=f"u")
@@ -588,7 +595,7 @@ class FOM:
                 plt.colorbar(c, orientation="horizontal")
                 plt.show()
 
-        self.save_vtk(type="dual")
+        # self.save_vtk(type="dual")
 
     def save_vtk(self, type="primal"):
         folder = f"paraview/{self.dt}_{self.T}_{self.problem_name}/FOM"
@@ -603,9 +610,9 @@ class FOM:
 
         # only each 10th time step
         for i, t in list(enumerate(self.time_points))[::25]:
-            print(f"{type}: i = {i}")
-            print(np.linalg.norm(self.Y[type]["displacement"][:, i]))
-            print(np.linalg.norm(self.Y[type]["pressure"][:, i]))
+            # print(f"{type}: i = {i}")
+            # print(np.linalg.norm(self.Y[type]["displacement"][:, i]))
+            # print(np.linalg.norm(self.Y[type]["pressure"][:, i]))
             vtk_displacement = File(
                 f"{folder}/{type}_displacement_{str(i)}.pvd")
             vtk_pressure = File(f"{folder}/{type}_pressure_{str(i)}.pvd")
