@@ -57,8 +57,8 @@ REL_ERROR_TOL = 1e-2
 MAX_ITERATIONS = 100
 TOTAL_ENERGY = {
     "primal": {
-        "displacement": 1 - 1e-9,
-        "pressure": 1 - 1e-9,
+        "displacement": 1 - 1e-2,
+        "pressure": 1 - 1e-2,
     },
 }
 
@@ -66,10 +66,11 @@ TOTAL_ENERGY = {
 start_time_fom = time.time()
 fom = FOM(t, T, dt, Mandel())
 fom.solve_primal(force_recompute=True)
+fom.solve_dual(force_recompute=True)
 end_time_fom = time.time()
 
 fom.solve_functional_trajectory()
-#fom.plot_bottom_solution()
+# fom.plot_bottom_solution()
 
 
 # ----------- ROM -----------
@@ -94,10 +95,12 @@ end_time_rom = time.time()
 
 # ----------- ROM Error -----------
 rom.compute_error()
+rom.error_estimate_dual_fom()
 rom.solve_functional_trajectory()
 rom.plot_bottom_solution()
 
 # ----------- Results -----------
 print("FOM time: ", end_time_fom - start_time_fom)
 print("ROM time: ", end_time_rom - start_time_rom)
-print("Speedup:  ", (end_time_fom - start_time_fom) / (end_time_rom - start_time_rom))
+print("Speedup:  ", (end_time_fom - start_time_fom) /
+      (end_time_rom - start_time_rom))
