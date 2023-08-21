@@ -14,6 +14,7 @@ import rich.console
 import rich.table
 import scipy
 from dolfin import *
+from tqdm import tqdm
 
 
 class FOM:
@@ -429,9 +430,10 @@ class FOM:
         self.Y["displacement"][:, 0] = np.zeros((self.dofs["displacement"],))
         self.Y["pressure"][:, 0] = np.zeros((self.dofs["pressure"],))
 
-        for i, t in enumerate(self.time_points[1:]):
+        print("Solving primal FOM:")
+        for i, t in enumerate(tqdm(self.time_points[1:])):
             n = i + 1
-            print(f"\n\nt = {round(t,5)}:\n===============")
+            #print(f"\n\nt = {round(t,5)}:\n===============")
             self.Y["displacement"][:, n], self.Y["pressure"][:, n] = self.solve_primal_time_step(
                 self.Y["displacement"][:, n - 1], self.Y["pressure"][:, n - 1]
             )

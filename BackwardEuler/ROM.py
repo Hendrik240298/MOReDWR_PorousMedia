@@ -16,7 +16,7 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.ticker import FormatStrFormatter, MaxNLocator
 from petsc4py import PETSc
 from slepc4py import SLEPc
-
+from tqdm import tqdm
 
 class ROM:
     # constructor
@@ -383,9 +383,10 @@ class ROM:
             )
         )
 
-        for i, t in enumerate(self.fom.time_points[1:]):
-            print("#-----------------------------------------------#")
-            print(f"t = {t:.4f}")
+        print("Solving primal ROM:")
+        for i, t in enumerate(tqdm(self.fom.time_points[1:])):
+            #print("#-----------------------------------------------#")
+            #print(f"t = {t:.4f}")
             n = i + 1
 
             solution = np.linalg.solve(
