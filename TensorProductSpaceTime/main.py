@@ -69,7 +69,7 @@ fom.solve_primal(force_recompute=True)
 end_time_fom = time.time()
 
 fom.solve_functional_trajectory()
-#fom.plot_bottom_solution()
+fom.plot_bottom_solution()
 
 """
 # ----------- ROM -----------

@@ -301,6 +301,13 @@ class TimeFE:
               shape=(self.n_dofs, self.n_dofs)
             )
 
+        if self.n_dofs == 1:
+            # NOTE: dG(0) does not work too great in FEniCS...
+            self.matrix["primal"]["derivative"][0, 0] = 1.
+
+        #print("time derivative:\n", self.matrix["primal"]["derivative"].todense())
+        #print("time mass:\n", self.matrix["primal"]["mass"].todense())
+
         self.vector["primal"]["traction_full"] = np.array(
             assemble(Constant(1.) * phi * dx)
         )
@@ -376,7 +383,7 @@ class FOM:
         self.time_points = np.zeros((total_temporal_dofs+1,))
         self.time_points[0] = self.t
         for i in range(len(self.slabs)):
-            self.time_points[i*self.Time.n_dofs+1:(i+1)*self.Time.n_dofs+1] = self.Time.dofs + self.slabs[i][0]
+            self.time_points[i*self.Time.n_dofs+1:(i+1)*self.Time.n_dofs+1] = self.Time.dofs + self.slabs[i][0] + (r == 0) * (self.slabs[i][1] - self.slabs[i][0]) / 2.0
 
         print(f"Time DoFs: {total_temporal_dofs:,} ({self.Time.n_dofs:,} DoFs x {len(self.slabs):,} slabs)")
         print(f"Space DoFs: {self.Space.n_dofs['total']:,} ({self.Space.n_dofs['displacement']:,} u + {self.Space.n_dofs['pressure']:,} p)")
@@ -504,17 +511,19 @@ class FOM:
         # print(f"Cost functional: {self.functional:.4e}")
 
         # print cost functional trajectory
-        print(self.time_points)
-        print(self.functional_values)
+        # print(self.time_points)
+        # print(self.functional_values)
         plt.plot(self.time_points[1:], self.functional_values)
         plt.show()
 
     def plot_bottom_solution(self):
         times = self.special_times.copy()
+        # print(times)
+        # print(self.time_points)
         for i, t in enumerate(self.time_points):
             if np.abs(t-times[0]) <= 1e-4:
                 times.pop(0)
-                plt.plot(self.bottom_x_u, self.bottom_matrix_u.dot(self.Y["displacement"][:, i]), label=f"t = {t}")
+                plt.plot(self.Space.bottom_x_u, self.Space.bottom_matrix_u.dot(self.Y["displacement"][:, i]), label=f"t = {t}")
                 if len(times) == 0:
                     break
         plt.xlabel("x")
@@ -527,7 +536,7 @@ class FOM:
         for i, t in enumerate(self.time_points):
             if np.abs(t-times[0]) <= 1e-4:
                 times.pop(0)
-                plt.plot(self.bottom_x_p, self.bottom_matrix_p.dot(self.Y["pressure"][:, i]), label=f"t = {t}")
+                plt.plot(self.Space.bottom_x_p, self.Space.bottom_matrix_p.dot(self.Y["pressure"][:, i]), label=f"t = {t}")
                 if len(times) == 0:
                     break
         plt.xlabel("x")
