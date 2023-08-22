@@ -5,7 +5,7 @@ import re
 import time
 from multiprocessing import Pool
 
-import dolfin
+from tqdm import tqdm
 
 # from mshr import *
 import matplotlib.pyplot as plt
@@ -223,7 +223,8 @@ class FOM:
             self.matrix["primal"]["system_matrix_no_bc"] = self.matrix["primal"]["system_matrix"].copy()
 
             # dual system matrix as transposed primal system matrix
-            self.matrix["dual"]["system_matrix"] = self.matrix["primal"]["system_matrix"].transpose()
+            self.matrix["dual"]["system_matrix"] = self.matrix["primal"]["system_matrix"].transpose(
+            ).copy()
 
             self.matrix["dual"]["rhs_matrix"] = scipy.sparse.csr_matrix(
                 as_backend_type(
@@ -492,7 +493,7 @@ class FOM:
             (self.dofs["displacement"],))
         self.Y["primal"]["pressure"][:, 0] = np.zeros((self.dofs["pressure"],))
 
-        for i, t in enumerate(self.time_points[1:]):
+        for i, t in enumerate(tqdm(self.time_points[1:])):
             n = i + 1
             # print(f"\nt = {round(t,5)}:\n===============")
             self.Y["primal"]["displacement"][:, n], self.Y["primal"]["pressure"][:, n] = self.solve_primal_time_step(
@@ -517,15 +518,15 @@ class FOM:
         old_dual_solution = np.concatenate((z_u_nn_vector, z_p_nn_vector))
         # primal solution
 
-        # derivative of CF on rhs
-        dual_rhs = self.dt * np.concatenate(
-            (np.zeros_like(z_u_nn_vector), self.vector["primal"]["pressure_down"]))
-
         # ATTENTION: NO NEED FOR PRIMAL SOLUTION FOR LINEAR PROBLEMS
 
-        # old dual solution on rhs (NO self.dt NEEDED! ELSE SOLUTIOON blowupd)
-        dual_rhs += \
-            self.matrix["primal"]["rhs_matrix"].T.dot(old_dual_solution)
+        # old dual solution on rhs (NO self.dt NEEDED! ELSE SOLUTION blowups)
+        dual_rhs = self.matrix["primal"]["rhs_matrix"].transpose().dot(
+            old_dual_solution)
+
+        # derivative of CF on rhs
+        dual_rhs[self.dofs["displacement"]:] += self.dt * \
+            self.vector["primal"]["pressure_down"]
 
         # apply homogeneous Dirichlet BC to right hand side
         dual_rhs *= (1.0 - self.boundary_dof_vector)
@@ -566,15 +567,14 @@ class FOM:
         # print(np.linalg.norm(self.Y["dual"]["displacement"][:, -1]))
         # print(np.linalg.norm(self.Y["dual"]["pressure"][:, -1]))
 
-        for i, t in list(enumerate(self.time_points[:-1]))[::-1]:
+        for i, t in tqdm(list(enumerate(self.time_points[:-1]))[::-1]):
             n = i
             # print(f"\n n = {n}; t = {round(t,5)}")
-            self.Y["dual"]["displacement"][:, n], self.Y["dual"]["pressure"][:, n] = self.solve_dual_time_step(
-                self.Y["dual"]["displacement"][:, n +
-                                               1], self.Y["dual"]["pressure"][:, n + 1]
+            self.Y["dual"]["displacement"][:, n], self.Y["dual"]["pressure"][:, n] = \
+                self.solve_dual_time_step(
+                self.Y["dual"]["displacement"][:, n + 1],
+                    self.Y["dual"]["pressure"][:, n + 1]
             )
-            # print(np.linalg.norm(self.Y["dual"]["displacement"][:, n]))
-            # print(np.linalg.norm(self.Y["dual"]["pressure"][:, n]))
 
             # plot dual solution
             u, p = self.U_n.split()

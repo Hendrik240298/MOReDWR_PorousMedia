@@ -47,7 +47,7 @@ t = 0.0
 # end time
 T = 5.0e6
 # time step size
-dt = 1000.0
+dt = 1000  # 5.e6/20  # 1000.0
 
 n_timesteps = int(T / dt)
 # dt = T / n_timesteps
@@ -59,6 +59,10 @@ TOTAL_ENERGY = {
     "primal": {
         "displacement": 1 - 1e-2,
         "pressure": 1 - 1e-2,
+    },
+    "dual": {
+        "displacement": 1 - 1e-8,
+        "pressure": 1 - 1e-8,
     },
 }
 
@@ -95,7 +99,7 @@ end_time_rom = time.time()
 
 # ----------- ROM Error -----------
 rom.compute_error()
-rom.error_estimate_dual_fom()
+rom.error_estimate_dual_fom_reduced()
 rom.solve_functional_trajectory()
 rom.plot_bottom_solution()
 
