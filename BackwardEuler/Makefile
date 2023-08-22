@@ -10,7 +10,6 @@ run:
 condor:
 	condor_submit cluster/condor.submit
 
-
 uml:
 	pyreverse -o png FOM.py
 	mv classes.png FOM.png
