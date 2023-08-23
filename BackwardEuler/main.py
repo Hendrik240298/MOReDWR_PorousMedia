@@ -101,11 +101,11 @@ rom.solve_dual()
 # ----------- ROM Error -----------
 rom.compute_error()
 rom.error_estimate_dual_fom_reduced()
+rom.error_estimate()
 rom.solve_functional_trajectory()
 rom.plot_bottom_solution()
 
 # ----------- Results -----------
 print("FOM time: ", end_time_fom - start_time_fom)
 print("ROM time: ", end_time_rom - start_time_rom)
-print("Speedup:  ", (end_time_fom - start_time_fom) /
-      (end_time_rom - start_time_rom))
+print("Speedup:  ", (end_time_fom - start_time_fom) / (end_time_rom - start_time_rom))

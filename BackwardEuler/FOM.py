@@ -569,8 +569,6 @@ class FOM:
                 self.Y["dual"]["displacement"][:, n + 1], self.Y["dual"]["pressure"][:, n + 1]
             )
 
-
-
             IF_PLOT = True
             if (i == 0 or i == 4999) and IF_PLOT:
                 # plot dual solution

@@ -84,15 +84,17 @@ class ROM:
         self.matrix = {
             "primal": {"system_matrix": None, "rhs_matrix": None},
             "dual": {"system_matrix": None, "rhs_matrix": None},
+            "estimator": {"system_matrix": None, "rhs_matrix": None},
         }
         self.vector = {
             "primal": {"traction": None},
             "dual": {"pressure_down": None},
+            "estimator": {"traction": None},
         }
 
         self.solution = {
             "primal": {"displacement": None, "pressure": None},
-            "dual": {"displacement": None, "pressure": None}
+            "dual": {"displacement": None, "pressure": None},
         }
         self.functional_values = np.zeros((self.fom.dofs["time"] - 1,))
 
@@ -104,8 +106,7 @@ class ROM:
 
         # check fom.Y and rom.solution shape
         print("fom.Y shape: ", self.fom.Y["primal"]["displacement"].shape)
-        print("rom.solution shape: ",
-              self.solution["primal"]["displacement"].shape)
+        print("rom.solution shape: ", self.solution["primal"]["displacement"].shape)
 
         for i in range(self.fom.dofs["time"] - 1):
             projected_solution_disp = self.project_vector(
@@ -117,23 +118,19 @@ class ROM:
                 self.solution["primal"]["pressure"][:, i], type="primal", quantity="pressure"
             )
             error["displacement"][i] = np.linalg.norm(
-                projected_solution_disp -
-                self.fom.Y["primal"]["displacement"][:, i]
+                projected_solution_disp - self.fom.Y["primal"]["displacement"][:, i]
             ) / np.linalg.norm(self.fom.Y["primal"]["displacement"][:, i])
             error["pressure"][i] = np.linalg.norm(
-                projected_solution_pres -
-                self.fom.Y["primal"]["pressure"][:, i]
+                projected_solution_pres - self.fom.Y["primal"]["pressure"][:, i]
             ) / np.linalg.norm(self.fom.Y["primal"]["pressure"][:, i])
 
         # plot results in subplots
         fig, ax = plt.subplots(2, 1, figsize=(10, 10))
-        ax[0].semilogy(self.fom.time_points[1:],
-                       error["displacement"] * 100, label="displacement")
+        ax[0].semilogy(self.fom.time_points[1:], error["displacement"] * 100, label="displacement")
         ax[0].set_xlabel("time")
         ax[0].set_ylabel("displacement - error [%]")
         ax[0].grid()
-        ax[1].semilogy(self.fom.time_points[1:],
-                       error["pressure"] * 100, label="pressure")
+        ax[1].semilogy(self.fom.time_points[1:], error["pressure"] * 100, label="pressure")
         ax[1].set_xlabel("time")
         ax[1].set_ylabel("pressure - error [%]")
         ax[1].grid()
@@ -152,21 +149,17 @@ class ROM:
         self.functional = np.sum(self.functional_values)
         print(f"Cost functional - FOM : {self.fom.functional:.4e}")
         print(f"Cost functional - ROM : {self.functional:.4e}")
-        print(
-            f"Error:                  {np.abs(self.functional - self.fom.functional):.4e}")
+        print(f"Error:                  {np.abs(self.functional - self.fom.functional):.4e}")
         print(f"Estimate:               {np.abs(np.sum(self.errors)):.4e}")
 
         print(
             f"Relative Error [%]:     {100* np.abs(self.functional - self.fom.functional) / np.abs(self.fom.functional):.4e}"
         )
-        print(
-            f"Relative Estimate [%] : {100* np.sum(np.abs(self.relative_errors)):.4e}")
+        print(f"Relative Estimate [%] : {100* np.sum(np.abs(self.relative_errors)):.4e}")
 
         # print cost functional trajectory
-        plt.plot(self.fom.time_points[1:],
-                 self.fom.functional_values, label="FOM")
-        plt.plot(
-            self.fom.time_points[1:], self.functional_values, linestyle="--", label="ROM")
+        plt.plot(self.fom.time_points[1:], self.fom.functional_values, label="FOM")
+        plt.plot(self.fom.time_points[1:], self.functional_values, linestyle="--", label="ROM")
 
         plt.xlabel("time")
         plt.ylabel("cost functional")
@@ -226,14 +219,12 @@ class ROM:
                 times.pop(0)
                 plt.plot(
                     self.fom.bottom_x_u,
-                    self.bottom_matrix_u.dot(
-                        self.solution["primal"]["displacement"][:, i]),
+                    self.bottom_matrix_u.dot(self.solution["primal"]["displacement"][:, i]),
                     label=f"t = {t} (FOM)",
                 )
                 plt.plot(
                     self.fom.bottom_x_u,
-                    self.bottom_matrix_u.dot(
-                        self.solution["primal"]["displacement"][:, i]),
+                    self.bottom_matrix_u.dot(self.solution["primal"]["displacement"][:, i]),
                     linestyle="--",
                     label=f"t = {t} (ROM)",
                 )
@@ -251,14 +242,12 @@ class ROM:
                 times.pop(0)
                 plt.plot(
                     self.fom.bottom_x_p,
-                    self.bottom_matrix_p.dot(
-                        self.solution["primal"]["pressure"][:, i]),
+                    self.bottom_matrix_p.dot(self.solution["primal"]["pressure"][:, i]),
                     label=f"t = {t} (FOM)",
                 )
                 plt.plot(
                     self.fom.bottom_x_p,
-                    self.bottom_matrix_p.dot(
-                        self.solution["primal"]["pressure"][:, i]),
+                    self.bottom_matrix_p.dot(self.solution["primal"]["pressure"][:, i]),
                     linestyle="--",
                     label=f"t = {t} (ROM)",
                 )
@@ -304,10 +293,8 @@ class ROM:
                 self.POD[type][quantity]["basis"] = self.POD[type][quantity]["basis"][:, 0:r]
             # update POD with  bunch matrix
             else:
-                M = np.dot(self.POD[type][quantity]["basis"].T,
-                           self.POD[type][quantity]["bunch"])
-                P = self.POD[type][quantity]["bunch"] - \
-                    np.dot(self.POD[type][quantity]["basis"], M)
+                M = np.dot(self.POD[type][quantity]["basis"].T, self.POD[type][quantity]["bunch"])
+                P = self.POD[type][quantity]["bunch"] - np.dot(self.POD[type][quantity]["basis"], M)
 
                 Q_p, R_p = scipy.linalg.qr(P, mode="economic")
                 Q_q = np.hstack((self.POD[type][quantity]["basis"], Q_p))
@@ -315,8 +302,7 @@ class ROM:
                 S0 = np.vstack(
                     (
                         np.diag(self.POD[type][quantity]["sigs"]),
-                        np.zeros((np.shape(R_p)[0], np.shape(
-                            self.POD[type][quantity]["sigs"])[0])),
+                        np.zeros((np.shape(R_p)[0], np.shape(self.POD[type][quantity]["sigs"])[0])),
                     )
                 )
                 MR_p = np.vstack((M, R_p))
@@ -343,8 +329,7 @@ class ROM:
                 self.POD[type][quantity]["basis"] = np.matmul(Q_q, U_k[:, 0:r])
 
             # empty bunch matrix after update
-            self.POD[type][quantity]["bunch"] = np.empty(
-                [self.fom.dofs[quantity], 0])
+            self.POD[type][quantity]["bunch"] = np.empty([self.fom.dofs[quantity], 0])
 
     def reduce_vector(self, vector, type, quantity):
         return np.dot(self.POD[type][quantity]["basis"].T, vector)
@@ -397,27 +382,22 @@ class ROM:
             self.iPOD(
                 self.fom.Y["primal"]["displacement"][:, i], type="primal", quantity="displacement"
             )
-            self.iPOD(self.fom.Y["primal"]["pressure"]
-                      [:, i], type="primal", quantity="pressure")
+            self.iPOD(self.fom.Y["primal"]["pressure"][:, i], type="primal", quantity="pressure")
 
         print(
             "DISPLACEMENT primal POD size:   ", self.POD["primal"]["displacement"]["basis"].shape[1]
         )
-        print("PRESSURE primal POD size:   ",
-              self.POD["primal"]["pressure"]["basis"].shape[1])
+        print("PRESSURE primal POD size:   ", self.POD["primal"]["pressure"]["basis"].shape[1])
 
         # dual POD brought to you by iPOD
         for i, t in enumerate(time_points):
             self.iPOD(
                 self.fom.Y["dual"]["displacement"][:, i], type="dual", quantity="displacement"
             )
-            self.iPOD(self.fom.Y["dual"]["pressure"][:, i],
-                      type="dual", quantity="pressure")
+            self.iPOD(self.fom.Y["dual"]["pressure"][:, i], type="dual", quantity="pressure")
 
-        print("DISPLACEMENT dual POD size:   ",
-              self.POD["dual"]["displacement"]["basis"].shape[1])
-        print("PRESSURE dual POD size:   ",
-              self.POD["dual"]["pressure"]["basis"].shape[1])
+        print("DISPLACEMENT dual POD size:   ", self.POD["dual"]["displacement"]["basis"].shape[1])
+        print("PRESSURE dual POD size:   ", self.POD["dual"]["pressure"]["basis"].shape[1])
 
         # for i in range(self.POD["primal"]["displacement"]["basis"].shape[1]):
         #     u, p = self.fom.U_n.split()
@@ -454,6 +434,16 @@ class ROM:
         # cost functional rhs
         self.vector["primal"]["pressure_down"] = self.reduce_vector(
             self.fom.vector["primal"]["pressure_down"], "primal", "pressure"
+        )
+
+        # error estimate primal rhs projected in dual space
+        self.vector["estimator"]["traction"] = np.concatenate(
+            (
+                self.reduce_vector(
+                    self.fom.vector["primal"]["traction"], type="dual", quantity="displacement"
+                ),
+                np.zeros((self.POD["dual"]["pressure"]["basis"].shape[1],)),
+            )
         )
 
         # * primal sub system matrices
@@ -520,6 +510,44 @@ class ROM:
             quantity1="pressure",
         )
 
+        # * estimator sub system matrices
+
+        matrix_stress_estimator = self.reduce_matrix_different_spaces(
+            self.fom.matrix["primal"]["stress"],
+            type0="dual",
+            type1="primal",
+            quantity0="displacement",
+            quantity1="displacement",
+        )
+        matrix_elasto_pressure_estimator = self.reduce_matrix_different_spaces(
+            self.fom.matrix["primal"]["elasto_pressure"],
+            type0="dual",
+            type1="primal",
+            quantity0="displacement",
+            quantity1="pressure",
+        )
+        matrix_laplace_estimator = self.reduce_matrix_different_spaces(
+            self.fom.matrix["primal"]["laplace"],
+            type0="dual",
+            type1="primal",
+            quantity0="pressure",
+            quantity1="pressure",
+        )
+        matrix_time_displacement_estimator = self.reduce_matrix_different_spaces(
+            self.fom.matrix["primal"]["time_displacement"],
+            type0="dual",
+            type1="primal",
+            quantity0="pressure",
+            quantity1="displacement",
+        )
+        matrix_time_pressure_estimator = self.reduce_matrix_different_spaces(
+            self.fom.matrix["primal"]["time_pressure"],
+            type0="dual",
+            type1="primal",
+            quantity0="pressure",
+            quantity1="pressure",
+        )
+
         # build primal system matrix from blocks
         self.matrix["primal"]["system_matrix"] = np.block(
             [
@@ -532,8 +560,19 @@ class ROM:
         self.matrix["dual"]["system_matrix"] = np.block(
             [
                 [matrix_stress_dual, matrix_time_displacement_dual],
-                [matrix_elasto_pressure_dual,
-                    matrix_time_pressure_dual + matrix_laplace_dual],
+                [matrix_elasto_pressure_dual, matrix_time_pressure_dual + matrix_laplace_dual],
+            ]
+        )
+
+        # build estimator system matrix from blocks
+        # build system matrix from blocks
+        self.matrix["estimator"]["system_matrix"] = np.block(
+            [
+                [matrix_stress_estimator, matrix_elasto_pressure_estimator],
+                [
+                    matrix_time_displacement_estimator,
+                    matrix_time_pressure_estimator + matrix_laplace_estimator,
+                ],
             ]
         )
 
@@ -543,8 +582,7 @@ class ROM:
         # build primal rhs matrix from blocks
         self.matrix["primal"]["rhs_matrix"] = np.block(
             [
-                [np.zeros_like(matrix_stress), np.zeros_like(
-                    matrix_elasto_pressure)],
+                [np.zeros_like(matrix_stress), np.zeros_like(matrix_elasto_pressure)],
                 [matrix_time_displacement, matrix_time_pressure],
             ]
         )
@@ -552,10 +590,19 @@ class ROM:
         # build dual rhs matrix from blocks
         self.matrix["dual"]["rhs_matrix"] = np.block(
             [
-                [np.zeros_like(matrix_stress_dual),
-                 matrix_time_displacement_dual],
-                [np.zeros_like(matrix_elasto_pressure_dual),
-                 matrix_time_pressure_dual],
+                [np.zeros_like(matrix_stress_dual), matrix_time_displacement_dual],
+                [np.zeros_like(matrix_elasto_pressure_dual), matrix_time_pressure_dual],
+            ]
+        )
+
+        # build estimator rhs matrix from blocks
+        self.matrix["estimator"]["rhs_matrix"] = np.block(
+            [
+                [
+                    np.zeros_like(matrix_stress_estimator),
+                    np.zeros_like(matrix_elasto_pressure_estimator),
+                ],
+                [matrix_time_displacement_estimator, matrix_time_pressure_estimator],
             ]
         )
 
@@ -563,18 +610,15 @@ class ROM:
         self.bottom_matrix_u = self.fom.bottom_matrix_u.dot(
             self.POD["primal"]["displacement"]["basis"]
         )
-        self.bottom_matrix_p = self.fom.bottom_matrix_p.dot(
-            self.POD["primal"]["pressure"]["basis"])
+        self.bottom_matrix_p = self.fom.bottom_matrix_p.dot(self.POD["primal"]["pressure"]["basis"])
 
     def solve_primal(self):
         self.solution["primal"]["displacement"] = np.zeros(
-            (self.POD["primal"]["displacement"]
-             ["basis"].shape[1], self.fom.dofs["time"])
+            (self.POD["primal"]["displacement"]["basis"].shape[1], self.fom.dofs["time"])
         )
 
         self.solution["primal"]["pressure"] = np.zeros(
-            (self.POD["primal"]["pressure"]
-             ["basis"].shape[1], self.fom.dofs["time"])
+            (self.POD["primal"]["pressure"]["basis"].shape[1], self.fom.dofs["time"])
         )
 
         # old timestep
@@ -596,8 +640,7 @@ class ROM:
                 + np.concatenate(
                     (
                         self.vector["primal"]["traction"],
-                        np.zeros(
-                            (self.POD["primal"]["pressure"]["basis"].shape[1],)),
+                        np.zeros((self.POD["primal"]["pressure"]["basis"].shape[1],)),
                     )
                 ),
             )
@@ -606,7 +649,7 @@ class ROM:
                 : self.POD["primal"]["displacement"]["basis"].shape[1]
             ]
             self.solution["primal"]["pressure"][:, n] = solution[
-                self.POD["primal"]["displacement"]["basis"].shape[1]:
+                self.POD["primal"]["displacement"]["basis"].shape[1] :
             ]
 
         self.save_vtk()
@@ -616,12 +659,10 @@ class ROM:
     def solve_dual(self):
         print("Solving dual ROM ...")
         self.solution["dual"]["displacement"] = np.zeros(
-            (self.POD["dual"]["displacement"]
-                ["basis"].shape[1], self.fom.dofs["time"])
+            (self.POD["dual"]["displacement"]["basis"].shape[1], self.fom.dofs["time"])
         )
         self.solution["dual"]["pressure"] = np.zeros(
-            (self.POD["dual"]["pressure"]
-                ["basis"].shape[1], self.fom.dofs["time"])
+            (self.POD["dual"]["pressure"]["basis"].shape[1], self.fom.dofs["time"])
         )
 
         dual_solution = np.concatenate(
@@ -636,19 +677,18 @@ class ROM:
             # print(f"i = {i}, t = {t:.4f}")
             # LES: A^T * U = dt * J + B^T * U^{n+1}
             dual_rhs = self.matrix["dual"]["rhs_matrix"].dot(dual_solution)
-            dual_rhs[self.POD["dual"]["displacement"]["basis"].shape[1]:] += self.fom.dt * self.vector["dual"]["pressure_down"]
-
-            dual_solution = np.linalg.solve(
-                self.matrix["dual"]["system_matrix"], dual_rhs
+            dual_rhs[self.POD["dual"]["displacement"]["basis"].shape[1] :] += (
+                self.fom.dt * self.vector["dual"]["pressure_down"]
             )
+
+            dual_solution = np.linalg.solve(self.matrix["dual"]["system_matrix"], dual_rhs)
 
             self.solution["dual"]["displacement"][:, n] = dual_solution[
                 : self.POD["dual"]["displacement"]["basis"].shape[1]
             ]
             self.solution["dual"]["pressure"][:, n] = dual_solution[
-                self.POD["dual"]["displacement"]["basis"].shape[1]:
+                self.POD["dual"]["displacement"]["basis"].shape[1] :
             ]
-
 
             IF_PLOT = True
             if (i == 0 or i == 4999) and IF_PLOT:
@@ -656,21 +696,21 @@ class ROM:
                 u, p = self.fom.U_n.split()
                 self.fom.U_n.vector().set_local(
                     np.concatenate(
-                    (
-                        self.project_vector(
-                            self.solution["dual"]["displacement"][:, n],
-                            type="dual",
-                            quantity="displacement",
-                        ),
-                        self.project_vector(
-                            self.solution["dual"]["pressure"][:, n],
-                            type="dual",
-                            quantity="pressure",
-                        ),
+                        (
+                            self.project_vector(
+                                self.solution["dual"]["displacement"][:, n],
+                                type="dual",
+                                quantity="displacement",
+                            ),
+                            self.project_vector(
+                                self.solution["dual"]["pressure"][:, n],
+                                type="dual",
+                                quantity="pressure",
+                            ),
+                        )
                     )
                 )
-                )
-            
+
                 # plot u and p in a subplot
                 plt.subplot(2, 1, 1)
                 c = plot(u, title=f"u - ROM")
@@ -685,7 +725,7 @@ class ROM:
         self.errors = np.zeros((self.fom.dofs["time"] - 1,))
         self.relative_errors = np.zeros((self.fom.dofs["time"] - 1,))
         self.functional_values = np.zeros((self.fom.dofs["time"] - 1,))
-        
+
         for i in range(1, self.fom.dofs["time"]):
             print("Estimating error for time step: ", i)
             solution = np.concatenate(
@@ -709,80 +749,16 @@ class ROM:
                 )
             )
 
-            traction_vec_dual = self.reduce_vector(
-                self.fom.vector["primal"]["traction"], type="dual", quantity="displacement"
-            )
-            # prolong vector to full dimension
-            traction_vec_dual = np.concatenate(
-                (
-                    traction_vec_dual,
-                    np.zeros(
-                        (self.POD["dual"]["pressure"]["basis"].shape[1],)),
-                )
-            )
-
-            matrix_stress = self.reduce_matrix_different_spaces(
-                self.fom.matrix["primal"]["stress"],
-                type0="dual",
-                type1="primal",
-                quantity0="displacement",
-                quantity1="displacement",
-            )
-            matrix_elasto_pressure = self.reduce_matrix_different_spaces(
-                self.fom.matrix["primal"]["elasto_pressure"],
-                type0="dual",
-                type1="primal",
-                quantity0="displacement",
-                quantity1="pressure",
-            )
-            matrix_laplace = self.reduce_matrix_different_spaces(
-                self.fom.matrix["primal"]["laplace"],
-                type0="dual",
-                type1="primal",
-                quantity0="pressure",
-                quantity1="pressure",
-            )
-            matrix_time_displacement = self.reduce_matrix_different_spaces(
-                self.fom.matrix["primal"]["time_displacement"],
-                type0="dual",
-                type1="primal",
-                quantity0="pressure",
-                quantity1="displacement",
-            )
-            matrix_time_pressure = self.reduce_matrix_different_spaces(
-                self.fom.matrix["primal"]["time_pressure"],
-                type0="dual",
-                type1="primal",
-                quantity0="pressure",
-                quantity1="pressure",
-            )
-
-            # build system matrix from blocks
-            system_matrix_dual_primal = np.block(
-                [
-                    [matrix_stress, matrix_elasto_pressure],
-                    [matrix_time_displacement, matrix_time_pressure + matrix_laplace],
-                ]
-            )
-
-            rhs_matrix = np.block(
-                [
-                    [np.zeros_like(matrix_stress), np.zeros_like(
-                        matrix_elasto_pressure)],
-                    [matrix_time_displacement, matrix_time_pressure],
-                ]
-            )
-
             # - A*U^n + F + B*U^{n-1}
-            AU = system_matrix_dual_primal.dot(solution)
-            BU_old = rhs_matrix.dot(old_solution)
+            AU = self.matrix["estimator"]["system_matrix"].dot(solution)
+            BU_old = self.matrix["estimator"]["rhs_matrix"].dot(old_solution)
 
             # print shapes
-            print("AU:                ", AU.shape)
-            print("BU_old:            ", BU_old.shape)
-            print("traction_vec_dual: ", traction_vec_dual.shape)
+            print("AU:                               ", AU.shape)
+            print("BU_old:                           ", BU_old.shape)
+            print("self.vector[estimator][traction]: ", self.vector["estimator"]["traction"].shape)
 
-            primal_res = -AU + traction_vec_dual + BU_old
+            primal_res = -AU + self.vector["estimator"]["traction"] + BU_old
 
             print(f"Primal sol norm   : {np.linalg.norm(solution)}")
             print(f"Primal res for {i}: {np.linalg.norm(primal_res)}")
@@ -870,8 +846,7 @@ class ROM:
             traction_vec_dual = np.concatenate(
                 (
                     traction_vec_dual,
-                    np.zeros(
-                        (self.POD["dual"]["pressure"]["basis"].shape[1],)),
+                    np.zeros((self.POD["dual"]["pressure"]["basis"].shape[1],)),
                 )
             )
 
@@ -921,8 +896,7 @@ class ROM:
 
             rhs_matrix = np.block(
                 [
-                    [np.zeros_like(matrix_stress), np.zeros_like(
-                        matrix_elasto_pressure)],
+                    [np.zeros_like(matrix_stress), np.zeros_like(matrix_elasto_pressure)],
                     [matrix_time_displacement, matrix_time_pressure],
                 ]
             )
@@ -932,11 +906,11 @@ class ROM:
             BU_old = rhs_matrix.dot(old_solution)
 
             # print shapes
-            print("AU:                ", AU.shape)
-            print("BU_old:            ", BU_old.shape)
-            print("traction_vec_dual: ", traction_vec_dual.shape)
+            print("AU:                              ", AU.shape)
+            print("BU_old:                          ", BU_old.shape)
+            print("self.vector[estimator][traction]: ", self.vector["estimator"]["traction"].shape)
 
-            primal_res = -AU + traction_vec_dual + BU_old
+            primal_res = -AU + self.vector["estimator"]["traction"] + BU_old
 
             print(f"Primal sol norm   : {np.linalg.norm(solution)}")
             print(f"Primal res for {i}: {np.linalg.norm(primal_res)}")
@@ -1013,8 +987,7 @@ class ROM:
 
                 # DEBUG by trying full IC
                 self.DEBUG_FULL_IC = self.project_vector(
-                    self.parent_slabs[index_ps]["solution"]["primal"][:, -
-                                                                      1], type="primal"
+                    self.parent_slabs[index_ps]["solution"]["primal"][:, -1], type="primal"
                 )
 
         self.validate()
@@ -1095,23 +1068,19 @@ class ROM:
         # subplot for velocuty and pressure
         # plt.figure(figsize=(8, 5.5))
         plt.subplot(2, 2, 1)
-        plt.plot(self.fom.time_points[offset:],
-                 self.drag_force[offset:], label="drag - ROM")
+        plt.plot(self.fom.time_points[offset:], self.drag_force[offset:], label="drag - ROM")
         plt.legend()
         plt.grid()
         plt.subplot(2, 2, 2)
-        plt.plot(self.fom.time_points[offset:],
-                 self.fom.drag_force[offset:], label="drag - FOM")
+        plt.plot(self.fom.time_points[offset:], self.fom.drag_force[offset:], label="drag - FOM")
         plt.legend()
         plt.grid()
         plt.subplot(2, 2, 3)
-        plt.plot(self.fom.time_points[offset:],
-                 self.lift_force[offset:], label="lift - ROM")
+        plt.plot(self.fom.time_points[offset:], self.lift_force[offset:], label="lift - ROM")
         plt.legend()
         plt.grid()
         plt.subplot(2, 2, 4)
-        plt.plot(self.fom.time_points[offset:],
-                 self.fom.lift_force[offset:], label="lidt - FOM")
+        plt.plot(self.fom.time_points[offset:], self.fom.lift_force[offset:], label="lidt - FOM")
         plt.legend()
         plt.grid()
 
@@ -1149,13 +1118,20 @@ class ROM:
                 )
             )
 
-            # compute difference in rom and fom cost functional evaluated at index i
-            rom_func_val = self.fom.vector["primal"]["pressure_down"].dot(
-                solution[self.fom.dofs["displacement"]:]
-            ) * self.fom.dt
-            fom_func_val = self.fom.vector["primal"]["pressure_down"].dot(
-                self.fom.Y["primal"]["pressure"][:, i]
-            ) * self.fom.dt
+            # compute difference in rom and fom cost functional evaluated at
+            # index i
+            rom_func_val = (
+                self.fom.vector["primal"]["pressure_down"].dot(
+                    solution[self.fom.dofs["displacement"] :]
+                )
+                * self.fom.dt
+            )
+            fom_func_val = (
+                self.fom.vector["primal"]["pressure_down"].dot(
+                    self.fom.Y["primal"]["pressure"][:, i]
+                )
+                * self.fom.dt
+            )
 
             print(f"Error in CF at {i}: {rom_func_val - fom_func_val}")
 
