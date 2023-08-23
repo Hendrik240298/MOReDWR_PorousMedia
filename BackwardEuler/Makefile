@@ -4,8 +4,13 @@ format:
 	black -l 100 *.py
 
 run:
-	python3 main.py
+	python3 main_iROM.py
 
+make iROM: 
+	python3 main_iROM.py
+
+make ROM:
+	python3 main_ROM.py
 
 condor:
 	condor_submit cluster/condor.submit

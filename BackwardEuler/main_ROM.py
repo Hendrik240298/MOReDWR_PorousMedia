@@ -91,12 +91,18 @@ rom.init_POD()
 
 # compute reduced matrices
 print("starting matrix reduction")
-rom.compute_reduced_matrices()
+rom.update_matrices(matrix_type="primal")
+rom.update_matrices(matrix_type="dual")
+rom.update_matrices(matrix_type="estimator")
 print("finished matrix reduction")
 
 rom.solve_primal()
 end_time_rom = time.time()
 rom.solve_dual()
+
+
+# post processing
+rom.update_matrices_plotting()
 
 # ----------- ROM Error -----------
 rom.compute_error()
