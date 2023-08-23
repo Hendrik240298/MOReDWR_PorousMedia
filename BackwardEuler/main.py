@@ -96,6 +96,7 @@ print("finished matrix reduction")
 
 rom.solve_primal()
 end_time_rom = time.time()
+rom.solve_dual()
 
 # ----------- ROM Error -----------
 rom.compute_error()

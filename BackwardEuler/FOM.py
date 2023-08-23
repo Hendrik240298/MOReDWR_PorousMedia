@@ -5,8 +5,6 @@ import re
 import time
 from multiprocessing import Pool
 
-from tqdm import tqdm
-
 # from mshr import *
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,6 +12,7 @@ import rich.console
 import rich.table
 import scipy
 from dolfin import *
+from tqdm import tqdm
 
 
 class FOM:
@@ -29,8 +28,7 @@ class FOM:
             setattr(self, key, value)
 
         self.time_points = np.arange(self.t, self.T + self.dt, self.dt)
-        print(
-            f"FIRST/LATEST TIME POINT:    {self.time_points[0]}/{self.time_points[-1]}")
+        print(f"FIRST/LATEST TIME POINT:    {self.time_points[0]}/{self.time_points[-1]}")
         print(f"NUMBER OF TIME POINTS:      {self.time_points.shape[0]}")
 
         # get class name of problem
@@ -39,16 +37,14 @@ class FOM:
 
         self.mesh = None
         if self.problem_name == "Mandel":
-            self.mesh = RectangleMesh(
-                Point(0.0, 0.0), Point(100.0, 20.0), 16, 16)
+            self.mesh = RectangleMesh(Point(0.0, 0.0), Point(100.0, 20.0), 16, 16)
             self.dim = self.mesh.geometry().dim()
 
             # plt.title("Mesh")
             # plot(self.mesh)
             # plt.show()
         else:
-            raise NotImplementedError(
-                "Only Mandel problem implemented so far.")
+            raise NotImplementedError("Only Mandel problem implemented so far.")
 
         element = {
             "u": VectorElement("Lagrange", self.mesh.ufl_cell(), 2),
@@ -75,22 +71,16 @@ class FOM:
             down.mark(facet_marker, 3)
             up.mark(facet_marker, 4)
 
-            self.ds_up = Measure(
-                "ds", subdomain_data=facet_marker, subdomain_id=4)
+            self.ds_up = Measure("ds", subdomain_data=facet_marker, subdomain_id=4)
             # boundary for cost functional
-            self.ds_down = Measure(
-                "ds", subdomain_data=facet_marker, subdomain_id=3)
+            self.ds_down = Measure("ds", subdomain_data=facet_marker, subdomain_id=3)
 
-            bc_left = DirichletBC(self.V.sub(0).sub(
-                0), Constant(0.0), left)  # left: u_x = 0
-            bc_right = DirichletBC(self.V.sub(
-                1), Constant(0.0), right)  # right:  p = 0
-            bc_down = DirichletBC(self.V.sub(0).sub(
-                1), Constant(0.0), down)  # down: u_y = 0
+            bc_left = DirichletBC(self.V.sub(0).sub(0), Constant(0.0), left)  # left: u_x = 0
+            bc_right = DirichletBC(self.V.sub(1), Constant(0.0), right)  # right:  p = 0
+            bc_down = DirichletBC(self.V.sub(0).sub(1), Constant(0.0), down)  # down: u_y = 0
             self.bc = [bc_left, bc_right, bc_down]
         else:
-            raise NotImplementedError(
-                "Only Mandel problem implemented so far.")
+            raise NotImplementedError("Only Mandel problem implemented so far.")
 
         # Define trial and test functions and function at old time step
         U = TrialFunction(self.V)
@@ -134,8 +124,7 @@ class FOM:
             self.matrix["primal"]["elasto_pressure"] = scipy.sparse.csr_matrix(
                 as_backend_type(
                     assemble(
-                        -self.alpha_biot *
-                        inner(p * Identity(self.dim), grad(phi_u)) * dx
+                        -self.alpha_biot * inner(p * Identity(self.dim), grad(phi_u)) * dx
                         + self.alpha_biot * inner(p * n, phi_u) * self.ds_up
                     )
                 )
@@ -145,13 +134,15 @@ class FOM:
                     self.dofs["displacement"] + self.dofs["pressure"],
                     self.dofs["displacement"] + self.dofs["pressure"],
                 ),
-            )[: self.dofs["displacement"], self.dofs["displacement"]:]
+            )[: self.dofs["displacement"], self.dofs["displacement"] :]
 
             self.matrix["primal"]["laplace"] = scipy.sparse.csr_matrix(
                 as_backend_type(
                     assemble(
-                        self.dt * (self.K_biot / self.viscosity_biot) *
-                        inner(grad(p), grad(phi_p)) * dx
+                        self.dt
+                        * (self.K_biot / self.viscosity_biot)
+                        * inner(grad(p), grad(phi_p))
+                        * dx
                     )
                 )
                 .mat()
@@ -160,27 +151,25 @@ class FOM:
                     self.dofs["displacement"] + self.dofs["pressure"],
                     self.dofs["displacement"] + self.dofs["pressure"],
                 ),
-            )[self.dofs["displacement"]:, self.dofs["displacement"]:]
+            )[self.dofs["displacement"] :, self.dofs["displacement"] :]
 
             self.matrix["primal"]["time_pressure"] = scipy.sparse.csr_matrix(
-                as_backend_type(assemble(self.c_biot * p *
-                                phi_p * dx)).mat().getValuesCSR()[::-1],
+                as_backend_type(assemble(self.c_biot * p * phi_p * dx)).mat().getValuesCSR()[::-1],
                 shape=(
                     self.dofs["displacement"] + self.dofs["pressure"],
                     self.dofs["displacement"] + self.dofs["pressure"],
                 ),
-            )[self.dofs["displacement"]:, self.dofs["displacement"]:]
+            )[self.dofs["displacement"] :, self.dofs["displacement"] :]
 
             self.matrix["primal"]["time_displacement"] = scipy.sparse.csr_matrix(
-                as_backend_type(
-                    assemble(self.alpha_biot * div(u) * phi_p * dx))
+                as_backend_type(assemble(self.alpha_biot * div(u) * phi_p * dx))
                 .mat()
                 .getValuesCSR()[::-1],
                 shape=(
                     self.dofs["displacement"] + self.dofs["pressure"],
                     self.dofs["displacement"] + self.dofs["pressure"],
                 ),
-            )[self.dofs["displacement"]:, : self.dofs["displacement"]]
+            )[self.dofs["displacement"] :, : self.dofs["displacement"]]
 
             self.vector["primal"]["traction"] = np.array(
                 assemble(Constant(self.traction_y_biot) * Phi[1] * self.ds_up)
@@ -193,7 +182,7 @@ class FOM:
             # pressure vector for cost functional (paper JR p. 25)
             self.vector["primal"]["pressure_down"] = np.array(
                 assemble(Phi[self.dim] * self.ds_down)
-            )[self.dofs["displacement"]:]
+            )[self.dofs["displacement"] :]
 
             # build system matrix
             self.matrix["primal"]["system_matrix"] = scipy.sparse.csr_matrix(
@@ -207,33 +196,30 @@ class FOM:
                 : self.dofs["displacement"], : self.dofs["displacement"]
             ] = self.matrix["primal"]["stress"]
             self.matrix["primal"]["system_matrix"][
-                : self.dofs["displacement"], self.dofs["displacement"]:
+                : self.dofs["displacement"], self.dofs["displacement"] :
             ] = self.matrix["primal"]["elasto_pressure"]
             self.matrix["primal"]["system_matrix"][
-                self.dofs["displacement"]:, self.dofs["displacement"]:
+                self.dofs["displacement"] :, self.dofs["displacement"] :
             ] = self.matrix["primal"]["laplace"]
             self.matrix["primal"]["system_matrix"][
-                self.dofs["displacement"]:, : self.dofs["displacement"]
+                self.dofs["displacement"] :, : self.dofs["displacement"]
             ] = self.matrix["primal"]["time_displacement"]
             self.matrix["primal"]["system_matrix"][
-                self.dofs["displacement"]:, self.dofs["displacement"]:
+                self.dofs["displacement"] :, self.dofs["displacement"] :
             ] += self.matrix["primal"]["time_pressure"]
 
             # system matrix wo boundary conditions
-            self.matrix["primal"]["system_matrix_no_bc"] = self.matrix["primal"]["system_matrix"].copy()
+            self.matrix["primal"]["system_matrix_no_bc"] = self.matrix["primal"][
+                "system_matrix"
+            ].copy()
 
             # dual system matrix as transposed primal system matrix
-            self.matrix["dual"]["system_matrix"] = self.matrix["primal"]["system_matrix"].transpose(
-            ).copy()
+            self.matrix["dual"]["system_matrix"] = (
+                self.matrix["primal"]["system_matrix"].transpose().copy()
+            )
 
             self.matrix["dual"]["rhs_matrix"] = scipy.sparse.csr_matrix(
-                as_backend_type(
-                    assemble(
-                        p * phi_p * self.ds_down
-                    )
-                )
-                .mat()
-                .getValuesCSR()[::-1],
+                as_backend_type(assemble(p * phi_p * self.ds_down)).mat().getValuesCSR()[::-1],
                 shape=(
                     self.dofs["displacement"] + self.dofs["pressure"],
                     self.dofs["displacement"] + self.dofs["pressure"],
@@ -256,11 +242,9 @@ class FOM:
             )
 
             # apply homogeneous Dirichlet BC to dual system matrix
-            self.matrix["dual"]["system_matrix"] = self.matrix["dual"][
-                "system_matrix"
-            ].multiply((1.0 - self.boundary_dof_vector).reshape(-1, 1)) + scipy.sparse.diags(
-                self.boundary_dof_vector
-            )
+            self.matrix["dual"]["system_matrix"] = self.matrix["dual"]["system_matrix"].multiply(
+                (1.0 - self.boundary_dof_vector).reshape(-1, 1)
+            ) + scipy.sparse.diags(self.boundary_dof_vector)
 
             self.solve_factorized_primal = scipy.sparse.linalg.factorized(
                 self.matrix["primal"]["system_matrix"].tocsc()
@@ -278,16 +262,18 @@ class FOM:
                 )
             )
             self.matrix["primal"]["rhs_matrix"][
-                self.dofs["displacement"]:, self.dofs["displacement"]:
+                self.dofs["displacement"] :, self.dofs["displacement"] :
             ] = self.matrix["primal"]["time_pressure"]
             self.matrix["primal"]["rhs_matrix"][
-                self.dofs["displacement"]:, : self.dofs["displacement"]
+                self.dofs["displacement"] :, : self.dofs["displacement"]
             ] = self.matrix["primal"]["time_displacement"]
 
             # get all x-displacement DoFs and coordinates at bottom boundary
             self.bottom_dofs_u = []
             self.bottom_x_u = []
-            for i, dof in enumerate(self.V.tabulate_dof_coordinates()[: self.V.sub(0).sub(0).dim()]):
+            for i, dof in enumerate(
+                self.V.tabulate_dof_coordinates()[: self.V.sub(0).sub(0).dim()]
+            ):
                 if dof[1] == 0.0:
                     self.bottom_dofs_u.append(i)
                     self.bottom_x_u.append(dof[0])
@@ -309,7 +295,7 @@ class FOM:
             # get all pressure DoFs and coordinates at bottom boundary
             self.bottom_dofs_p = []
             self.bottom_x_p = []
-            for i, dof in enumerate(self.V.tabulate_dof_coordinates()[self.dofs["displacement"]:]):
+            for i, dof in enumerate(self.V.tabulate_dof_coordinates()[self.dofs["displacement"] :]):
                 if dof[1] == 0.0:
                     self.bottom_dofs_p.append(i)
                     self.bottom_x_p.append(dof[0])
@@ -323,11 +309,9 @@ class FOM:
                 self.bottom_matrix_p[i, dof] = 1.0
 
             # times for plotting solution at bottom boundary
-            self.special_times = [1000., 5000.,
-                                  10000., 100000.,  500000., 5000000.]
+            self.special_times = [1000.0, 5000.0, 10000.0, 100000.0, 500000.0, 5000000.0]
         else:
-            raise NotImplementedError(
-                "Only Mandel problem implemented so far.")
+            raise NotImplementedError("Only Mandel problem implemented so far.")
 
         # define snapshot matrix
         self.Y = {
@@ -424,9 +408,10 @@ class FOM:
     def solve_functional_trajectory(self):
         self.functional_values = np.zeros((self.dofs["time"] - 1,))
         for i in range(self.dofs["time"] - 1):
-            self.functional_values[i] = self.vector["primal"]["pressure_down"].dot(
-                self.Y["primal"]["pressure"][:, i + 1]
-            ) * self.dt
+            self.functional_values[i] = (
+                self.vector["primal"]["pressure_down"].dot(self.Y["primal"]["pressure"][:, i + 1])
+                * self.dt
+            )
 
         self.functional = np.sum(self.functional_values)
         # print cost functional in scientific notation
@@ -439,10 +424,13 @@ class FOM:
     def plot_bottom_solution(self):
         times = self.special_times.copy()
         for i, t in enumerate(self.time_points):
-            if np.abs(t-times[0]) <= 1e-4:
+            if np.abs(t - times[0]) <= 1e-4:
                 times.pop(0)
-                plt.plot(self.bottom_x_u, self.bottom_matrix_u.dot(
-                    self.Y["primal"]["displacement"][:, i]), label=f"t = {t}")
+                plt.plot(
+                    self.bottom_x_u,
+                    self.bottom_matrix_u.dot(self.Y["primal"]["displacement"][:, i]),
+                    label=f"t = {t}",
+                )
                 if len(times) == 0:
                     break
         plt.xlabel("x")
@@ -453,10 +441,13 @@ class FOM:
 
         times = self.special_times.copy()
         for i, t in enumerate(self.time_points):
-            if np.abs(t-times[0]) <= 1e-4:
+            if np.abs(t - times[0]) <= 1e-4:
                 times.pop(0)
-                plt.plot(self.bottom_x_p, self.bottom_matrix_p.dot(
-                    self.Y["primal"]["pressure"][:, i]), label=f"t = {t}")
+                plt.plot(
+                    self.bottom_x_p,
+                    self.bottom_matrix_p.dot(self.Y["primal"]["pressure"][:, i]),
+                    label=f"t = {t}",
+                )
                 if len(times) == 0:
                     break
         plt.xlabel("x")
@@ -477,7 +468,7 @@ class FOM:
 
         solution = self.solve_factorized_primal(rhs)
 
-        return solution[: self.dofs["displacement"]], solution[self.dofs["displacement"]:]
+        return solution[: self.dofs["displacement"]], solution[self.dofs["displacement"] :]
 
     # def solve_dual_time_step(self, u_n_vector, z_n_vector):
     #     pass  # todo
@@ -489,30 +480,31 @@ class FOM:
                 return
 
         # zero initial condition
-        self.Y["primal"]["displacement"][:, 0] = np.zeros(
-            (self.dofs["displacement"],))
+        self.Y["primal"]["displacement"][:, 0] = np.zeros((self.dofs["displacement"],))
         self.Y["primal"]["pressure"][:, 0] = np.zeros((self.dofs["pressure"],))
 
         for i, t in enumerate(tqdm(self.time_points[1:])):
             n = i + 1
             # print(f"\nt = {round(t,5)}:\n===============")
-            self.Y["primal"]["displacement"][:, n], self.Y["primal"]["pressure"][:, n] = self.solve_primal_time_step(
-                self.Y["primal"]["displacement"][:, n -
-                                                 1], self.Y["primal"]["pressure"][:, n - 1]
+            (
+                self.Y["primal"]["displacement"][:, n],
+                self.Y["primal"]["pressure"][:, n],
+            ) = self.solve_primal_time_step(
+                self.Y["primal"]["displacement"][:, n - 1], self.Y["primal"]["pressure"][:, n - 1]
             )
 
         self.save_solution()
         # self.save_vtk()
 
     def solve_dual_time_step(self, z_u_nn_vector, z_p_nn_vector):
-        '''
-        INPUT: 
+        """
+        INPUT:
             z_u_nn_vector: dual displacement at time n+1
             z_p_nn_vector: dual pressure at time n+1
         OUTPUT:
             z_u_n_vector:  dual displacement at time n
             z_p_n_vector:  dual pressure at time n
-        '''
+        """
 
         # old dual solution
         old_dual_solution = np.concatenate((z_u_nn_vector, z_p_nn_vector))
@@ -521,15 +513,13 @@ class FOM:
         # ATTENTION: NO NEED FOR PRIMAL SOLUTION FOR LINEAR PROBLEMS
 
         # old dual solution on rhs (NO self.dt NEEDED! ELSE SOLUTION blowups)
-        dual_rhs = self.matrix["primal"]["rhs_matrix"].transpose().dot(
-            old_dual_solution)
+        dual_rhs = self.matrix["primal"]["rhs_matrix"].transpose().dot(old_dual_solution)
 
         # derivative of CF on rhs
-        dual_rhs[self.dofs["displacement"]:] += self.dt * \
-            self.vector["primal"]["pressure_down"]
+        dual_rhs[self.dofs["displacement"] :] += self.dt * self.vector["primal"]["pressure_down"]
 
         # apply homogeneous Dirichlet BC to right hand side
-        dual_rhs *= (1.0 - self.boundary_dof_vector)
+        dual_rhs *= 1.0 - self.boundary_dof_vector
 
         # solve dual system
         dual_solution = self.solve_factorized_dual(dual_rhs)
@@ -557,11 +547,13 @@ class FOM:
         # plt.colorbar(c, orientation="horizontal")
         # plt.show()
 
-        return dual_solution[: self.dofs["displacement"]], dual_solution[self.dofs["displacement"]:]
+        return (
+            dual_solution[: self.dofs["displacement"]],
+            dual_solution[self.dofs["displacement"] :],
+        )
 
     def solve_dual(self, force_recompute=False):
-        self.Y["dual"]["displacement"][:, -
-                                       1] = np.zeros((self.dofs["displacement"],))
+        self.Y["dual"]["displacement"][:, -1] = np.zeros((self.dofs["displacement"],))
         self.Y["dual"]["pressure"][:, -1] = np.zeros((self.dofs["pressure"],))
 
         # print(np.linalg.norm(self.Y["dual"]["displacement"][:, -1]))
@@ -570,22 +562,24 @@ class FOM:
         for i, t in tqdm(list(enumerate(self.time_points[:-1]))[::-1]):
             n = i
             # print(f"\n n = {n}; t = {round(t,5)}")
-            self.Y["dual"]["displacement"][:, n], self.Y["dual"]["pressure"][:, n] = \
-                self.solve_dual_time_step(
-                self.Y["dual"]["displacement"][:, n + 1],
-                    self.Y["dual"]["pressure"][:, n + 1]
+            (
+                self.Y["dual"]["displacement"][:, n],
+                self.Y["dual"]["pressure"][:, n],
+            ) = self.solve_dual_time_step(
+                self.Y["dual"]["displacement"][:, n + 1], self.Y["dual"]["pressure"][:, n + 1]
             )
 
-            # plot dual solution
-            u, p = self.U_n.split()
-            self.U_n.vector().set_local(np.concatenate(
-                (
-                    self.Y["dual"]["displacement"][:, n],
-                    self.Y["dual"]["pressure"][:, n]
-                )
-            ))
 
-            if i == 0 or i == 4999:
+
+            IF_PLOT = True
+            if (i == 0 or i == 4999) and IF_PLOT:
+                # plot dual solution
+                u, p = self.U_n.split()
+                self.U_n.vector().set_local(
+                    np.concatenate(
+                        (self.Y["dual"]["displacement"][:, n], self.Y["dual"]["pressure"][:, n])
+                    )
+                )
                 # plot u and p in a subplot
                 plt.subplot(2, 1, 1)
                 c = plot(u, title=f"u")
@@ -613,18 +607,14 @@ class FOM:
             # print(f"{type}: i = {i}")
             # print(np.linalg.norm(self.Y[type]["displacement"][:, i]))
             # print(np.linalg.norm(self.Y[type]["pressure"][:, i]))
-            vtk_displacement = File(
-                f"{folder}/{type}_displacement_{str(i)}.pvd")
+            vtk_displacement = File(f"{folder}/{type}_displacement_{str(i)}.pvd")
             vtk_pressure = File(f"{folder}/{type}_pressure_{str(i)}.pvd")
 
             u, p = self.U_n.split()
 
-            self.U_n.vector().set_local(np.concatenate(
-                (
-                    self.Y[type]["displacement"][:, i],
-                    self.Y[type]["pressure"][:, i]
-                )
-            ))
+            self.U_n.vector().set_local(
+                np.concatenate((self.Y[type]["displacement"][:, i], self.Y[type]["pressure"][:, i]))
+            )
 
             u.rename("displacement", "solution")
             p.rename("pressure", "solution")
