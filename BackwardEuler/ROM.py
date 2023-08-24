@@ -480,7 +480,6 @@ class ROM:
                 ]
             )
 
-
         if matrix_type == "dual":
             # dual rhs
             self.vector["dual"]["pressure_down"] = self.reduce_vector(
@@ -581,7 +580,7 @@ class ROM:
                 type1="primal",
                 quantity0="pressure",
                 quantity1="pressure",
-            )   
+            )
 
             # build estimator system matrix from blocks
             # build system matrix from blocks
@@ -606,14 +605,12 @@ class ROM:
                 ]
             )
 
-
     def update_matrices_plotting(self):
         # reduce matrices for evaluation of the solution at the bottom boundary
         self.bottom_matrix_u = self.fom.bottom_matrix_u.dot(
             self.POD["primal"]["displacement"]["basis"]
         )
         self.bottom_matrix_p = self.fom.bottom_matrix_p.dot(self.POD["primal"]["pressure"]["basis"])
-
 
     def solve_primal(self):
         self.solution["primal"]["displacement"] = np.zeros(

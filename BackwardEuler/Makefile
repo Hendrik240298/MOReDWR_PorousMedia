@@ -20,3 +20,6 @@ uml:
 	mv classes.png FOM.png
 	pyreverse -o png ROM.py
 	mv classes.png ROM.png
+	pyreverse -o png iROM.py
+	mv classes.png iROM.png
+

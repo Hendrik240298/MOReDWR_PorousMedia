@@ -17,11 +17,13 @@ from tqdm import tqdm
 
 class FOM:
     # constructor
-    def __init__(self, t, T, dt, problem):
+    def __init__(self, t, T, dt, problem, quantities=["displacement", "pressure"]):
         self.t = t
         self.T = T
         self.dt = dt
         self.problem = problem
+        # ORDERING IS IMPORTANT FOR ROM!
+        self.quantities = quantities
 
         # for each variable of the object problem, add this variable to the FOM
         for key, value in problem.__dict__.items():
@@ -331,8 +333,8 @@ class FOM:
         # IO data
         self.SAVE_DIR = "results/"
 
-    def save_solution(self):
-        pattern = r"solution_\d{6}\.npz"
+    def save_solution(self, solution_type="primal"):
+        pattern = r"solution_" + solution_type + "_" + r"\d{6}\.npz"
         files = os.listdir(self.SAVE_DIR)
         files = [
             self.SAVE_DIR + f
@@ -354,26 +356,26 @@ class FOM:
             if np.array_equal(parameters, tmp["parameters"]):
                 np.savez(
                     file,
-                    displacement=self.Y["primal"]["displacement"],
-                    pressure=self.Y["primal"]["pressure"],
+                    displacement=self.Y[solution_type]["displacement"],
+                    pressure=self.Y[solution_type]["pressure"],
                     parameters=parameters,
                     compression=True,
                 )
                 print(f"Overwrite {file}")
                 return
 
-        file_name = "results/solution_" + str(len(files)).zfill(6) + ".npz"
+        file_name = "results/solution_" + solution_type + "_" + str(len(files)).zfill(6) + ".npz"
         np.savez(
             file_name,
-            displacement=self.Y["primal"]["displacement"],
-            pressure=self.Y["primal"]["pressure"],
+            displacement=self.Y[solution_type]["displacement"],
+            pressure=self.Y[solution_type]["pressure"],
             parameters=parameters,
             compression=True,
         )
         print(f"Saved as {file_name}")
 
-    def load_solution(self):
-        pattern = r"solution_\d{6}\.npz"
+    def load_solution(self, solution_type="primal"):
+        pattern = r"solution_" + solution_type + "_" + r"\d{6}\.npz"
 
         # check if self.SAVE_DIR exists
         if not os.path.exists(self.SAVE_DIR):
@@ -399,8 +401,8 @@ class FOM:
         for file in files:
             tmp = np.load(file)
             if np.array_equal(parameters, tmp["parameters"]):
-                self.Y["primal"]["displacement"] = tmp["displacement"]
-                self.Y["primal"]["pressure"] = tmp["pressure"]
+                self.Y[solution_type]["displacement"] = tmp["displacement"]
+                self.Y[solution_type]["pressure"] = tmp["pressure"]
                 print(f"Loaded {file}")
                 return True
         return False
@@ -470,13 +472,10 @@ class FOM:
 
         return solution[: self.dofs["displacement"]], solution[self.dofs["displacement"] :]
 
-    # def solve_dual_time_step(self, u_n_vector, z_n_vector):
-    #     pass  # todo
-
     # Solve time trajectory
     def solve_primal(self, force_recompute=False):
         if not force_recompute:
-            if self.load_solution():
+            if self.load_solution(solution_type="primal"):
                 return
 
         # zero initial condition
@@ -493,7 +492,7 @@ class FOM:
                 self.Y["primal"]["displacement"][:, n - 1], self.Y["primal"]["pressure"][:, n - 1]
             )
 
-        self.save_solution()
+        self.save_solution(solution_type="primal")
         # self.save_vtk()
 
     def solve_dual_time_step(self, z_u_nn_vector, z_p_nn_vector):
@@ -553,6 +552,10 @@ class FOM:
         )
 
     def solve_dual(self, force_recompute=False):
+        if not force_recompute:
+            if self.load_solution(solution_type="dual"):
+                return
+            
         self.Y["dual"]["displacement"][:, -1] = np.zeros((self.dofs["displacement"],))
         self.Y["dual"]["pressure"][:, -1] = np.zeros((self.dofs["pressure"],))
 
@@ -586,6 +589,8 @@ class FOM:
                 c = plot(p, title=f"p")
                 plt.colorbar(c, orientation="horizontal")
                 plt.show()
+
+        self.save_solution(solution_type="dual")
 
         # self.save_vtk(type="dual")
 

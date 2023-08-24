@@ -232,7 +232,7 @@ class iROM:
         # ---------------------------------
         # ------ Plot relative error ------
         # ---------------------------------
-        plt.plot(
+        plt.semilogy(
             self.fom.time_points[1:],
             100
             * np.abs(self.fom.functional_values - self.functional_values)
@@ -240,7 +240,7 @@ class iROM:
             label="relative error",
         )
 
-        plt.plot(
+        plt.semilogy(
             self.fom.time_points[1:],
             100 * self.fom.dt * self.relative_errors,
             label="relative estimate",
@@ -379,7 +379,7 @@ class iROM:
                 U_k, S_k, _ = scipy.linalg.svd(K, full_matrices=False)
 
                 # compute the number of POD modes to be kept
-                r = self.POD[type][quantity]["basis"].shape[1]
+                r = self.POD[type][quantity]["basis"].shape[1] #+ 1
 
                 while (
                     np.dot(S_k[0:r], S_k[0:r])
@@ -429,23 +429,19 @@ class iROM:
         # primal POD
         time_points = self.fom.time_points[:]
 
-        for i, t in enumerate(time_points):
-            self.iPOD(
-                self.fom.Y["primal"]["displacement"][:, i], type="primal", quantity="displacement"
-            )
-            self.iPOD(self.fom.Y["primal"]["pressure"][:, i], type="primal", quantity="pressure")
-
+        for i, t in enumerate(time_points[:3]):
+            for quantity in self.fom.quantities:
+                self.iPOD(self.fom.Y["primal"][quantity][:, i], type="primal", quantity=quantity)
+            
         print(
             "DISPLACEMENT primal POD size:   ", self.POD["primal"]["displacement"]["basis"].shape[1]
         )
         print("PRESSURE primal POD size:   ", self.POD["primal"]["pressure"]["basis"].shape[1])
 
         # dual POD brought to you by iPOD
-        for i, t in enumerate(time_points):
-            self.iPOD(
-                self.fom.Y["dual"]["displacement"][:, i], type="dual", quantity="displacement"
-            )
-            self.iPOD(self.fom.Y["dual"]["pressure"][:, i], type="dual", quantity="pressure")
+        for i, t in enumerate(time_points[:3]):
+            for quantity in self.fom.quantities:
+                self.iPOD(self.fom.Y["dual"][quantity][:, i], type="dual", quantity=quantity)
 
         print("DISPLACEMENT dual POD size:   ", self.POD["dual"]["displacement"]["basis"].shape[1])
         print("PRESSURE dual POD size:   ", self.POD["dual"]["pressure"]["basis"].shape[1])
@@ -785,7 +781,7 @@ class iROM:
         self.functional_values = np.zeros((self.fom.dofs["time"] - 1,))
 
         for i in range(1, self.fom.dofs["time"]):
-            print("Estimating error for time step: ", i)
+            # print("Estimating error for time step: ", i)
             solution = np.concatenate(
                 (
                     self.solution["primal"]["displacement"][:, i],
@@ -812,23 +808,27 @@ class iROM:
             BU_old = self.matrix["estimator"]["rhs_matrix"].dot(old_solution)
 
             # print shapes
-            print("AU:                               ", AU.shape)
-            print("BU_old:                           ", BU_old.shape)
-            print("self.vector[estimator][traction]: ", self.vector["estimator"]["traction"].shape)
+            # print("AU:                               ", AU.shape)
+            # print("BU_old:                           ", BU_old.shape)
+            # print("self.vector[estimator][traction]: ", self.vector["estimator"]["traction"].shape)
 
             primal_res = -AU + self.vector["estimator"]["traction"] + BU_old
 
-            print(f"Primal sol norm   : {np.linalg.norm(solution)}")
-            print(f"Primal res for {i}: {np.linalg.norm(primal_res)}")
+            # print(f"Primal sol norm   : {np.linalg.norm(solution)}")
+            # print(f"Primal res for {i}: {np.linalg.norm(primal_res)}")
 
             self.errors[i - 1] = np.dot(dual_sol, primal_res)
 
-            self.functional_values[i - 1] = self.fom.vector["primal"]["pressure_down"].dot(
-                self.fom.Y["primal"]["pressure"][:, i]
-            )
-            self.relative_errors[i - 1] = self.errors[i - 1] / (
-                self.errors[i - 1] + self.functional_values[i - 1]
-            )
+            self.functional_values[i - 1] = self.vector["primal"]["pressure_down"].dot(
+                self.solution["primal"]["pressure"][:, i]
+            ) * self.fom.dt
+
+            if np.abs(self.errors[i-1] + self.functional_values[i-1]) < 1e-12:
+                self.relative_errors[i - 1] = self.errors[i - 1] / 1e-12
+            else:
+                self.relative_errors[i - 1] = self.errors[i - 1] / (
+                    self.errors[i - 1] + self.functional_values[i - 1]
+                )
 
     def solve_primal_time_step_slab(self, old_solution):
         return np.linalg.solve(
@@ -848,6 +848,11 @@ class iROM:
             self.fom.dt * self.vector["dual"]["pressure_down"]
         )
         return np.linalg.solve(self.matrix["dual"]["system_matrix"], dual_rhs)
+
+    def validate(self):
+        self.solve_primal()
+        self.solve_dual()
+        self.error_estimate()
 
     def solve_primal_parent_slab(self, index_parent_slab):
         execution_time = time.time()
@@ -921,7 +926,7 @@ class iROM:
         )
 
         for i in range(self.parent_slabs[index_parent_slab]["steps"]):
-            print("Estimating error for time step: ", i)
+            # print("Estimating error for time step: ", i)
             solution = np.concatenate(
                 (
                     self.parent_slabs[index_parent_slab]["solution"]["primal"]["displacement"][:, i],
@@ -954,7 +959,6 @@ class iROM:
 
             errors[i] = np.dot(dual_sol, primal_res)
 
-            # TODO:
             self.parent_slabs[index_parent_slab]["functional"][i] = self.vector["primal"]["pressure_down"].dot(
                 self.parent_slabs[index_parent_slab]["solution"]["primal"]["pressure"][:, i]
             ) * self.fom.dt
@@ -966,10 +970,14 @@ class iROM:
                 relative_errors[i] = errors[i] / (
                     errors[i] +
                     self.parent_slabs[index_parent_slab]["functional"][i]
-                )        
+                )    
+
+            # total relative error on entire parent slab
+            slab_relative_error = np.abs(np.sum(errors) / np.sum(errors + self.parent_slabs[index_parent_slab]["functional"]))
 
         # # ORIGINAL
         i_max = np.argmax(np.abs(relative_errors))
+        i_max_abs =  np.argmax(np.abs(errors))
         # print(f"First estim: {relative_errors[0:10]}")
         # print(f"i_max: {i_max}")
         error = {
@@ -977,9 +985,122 @@ class iROM:
             "absolute": errors,
             "max": np.abs(relative_errors[i_max]),
             "i_max": i_max,
+            "max_abs": np.abs(errors[i_max_abs]),
+            "i_max_abs": i_max_abs,
+            "slab_relative_error": slab_relative_error
         }
         self.timings["error_estimate"] += time.time() - execution_time
         return error
+
+    def enrich_parent_slab(self, index_parent_slab, i_max):
+        # COMMENT: Right now I have implemented without forward and backward of primal and dual
+        #          with new solution to get a better last solution for dual
+
+        execution_time = time.time()
+        # print(self.parent_slabs[index_parent_slab]["initial_condition"].shape)
+        projected_last_initial = np.concatenate(    
+            (
+                self.project_vector(
+                    self.parent_slabs[index_parent_slab]["initial_condition"][:self.POD["primal"]["displacement"]["basis"].shape[1]],
+                    type="primal",
+                    quantity="displacement"
+                ),
+                self.project_vector(
+                    self.parent_slabs[index_parent_slab]["initial_condition"][self.POD["primal"]["displacement"]["basis"].shape[1]:],
+                    type="primal",
+                    quantity="pressure"
+                ),
+            )
+        )
+
+        # DEBUG WITH FULL IC
+        projected_last_initial = self.DEBUG_FULL_IC
+
+        if i_max == 0:
+            # if we need to enrich at first step choose IC as last solution
+            last_solution = projected_last_initial
+        else:
+            last_solution = np.concatenate( 
+                (
+                    self.project_vector(
+                        self.parent_slabs[index_parent_slab]["solution"]["primal"]["displacement"][:, i_max - 1],
+                        type="primal",
+                        quantity="displacement"
+                    ),
+                    self.project_vector(
+                        self.parent_slabs[index_parent_slab]["solution"]["primal"]["pressure"][:, i_max - 1],
+                        type="primal",
+                        quantity="pressure"
+                    ),
+                )
+            )
+            
+        # enrich primal
+        new_solution = self.fom.solve_primal_time_step(
+            last_solution[:self.fom.dofs["displacement"]], 
+            last_solution[self.fom.dofs["displacement"]:]
+        )
+        
+        for i, quantity in enumerate(self.fom.quantities):
+            self.iPOD(new_solution[i], type="primal", quantity=quantity)
+        self.update_matrices(matrix_type="primal")
+
+        # enrich dual
+        # check if dual[i_max] is already last solution if
+        # true: use zeros
+        # false: use dual[i_max+1]
+        last_dual_solution = None
+        if i_max == self.parent_slabs[index_parent_slab]["steps"] - 1:
+            last_dual_solution = np.zeros(
+                (self.fom.dofs["displacement"] + self.fom.dofs["pressure"],)
+            )
+        else:
+            last_dual_solution = np.concatenate(
+                (
+                    self.project_vector(
+                        self.parent_slabs[index_parent_slab]["solution"]["dual"]["displacement"][:, i_max + 1],
+                        type="dual",
+                        quantity="displacement"
+                    ),
+                    self.project_vector(
+                        self.parent_slabs[index_parent_slab]["solution"]["dual"]["pressure"][:, i_max + 1],
+                        type="dual",
+                        quantity="pressure"
+                    ),  
+                )
+            )
+            
+        new_dual_solution = self.fom.solve_dual_time_step(
+            last_dual_solution[:self.fom.dofs["displacement"]],
+            last_dual_solution[self.fom.dofs["displacement"]:]
+        )
+        
+        for i, quantity in enumerate(self.fom.quantities):
+            self.iPOD(new_dual_solution[i], type="dual", quantity=quantity)
+        self.update_matrices(matrix_type="dual")
+
+        # update estimate components
+        self.update_matrices(matrix_type="estimator")
+
+        # update the initial condition to new basis
+        self.parent_slabs[index_parent_slab]["initial_condition"] = np.concatenate(
+            (
+                self.reduce_vector(
+                    projected_last_initial[:self.fom.dofs["displacement"]], type="primal", quantity="displacement"
+                ),
+                self.reduce_vector(
+                    projected_last_initial[self.fom.dofs["displacement"]:], type="primal", quantity="pressure"
+                ),
+            )
+        )
+        self.timings["enrichment"] += time.time() - execution_time
+
+
+    # relative error:
+    # \sum_i {eta_i / (eta_i + J(u_r)_i)}
+
+    # Gegenvorschlag:
+    # \sum_i {eta_i / \sum_j (eta_j + J(u_r)_j)}
 
     def run_parent_slab(self):
         execution_time = time.time()
@@ -991,7 +1112,7 @@ class iROM:
         self.update_matrices("estimator")
 
         iteration = 1
-        fom_solves = 0
+        self.fom_solves = 0
         max_error_iteration = []
         self.parent_slabs[0]["initial_condition"] = np.zeros(
             (self.POD["primal"]["displacement"]["basis"].shape[1]\
@@ -1018,41 +1139,60 @@ class iROM:
 
                 # 3. Evaluate DWR error estimator
                 estimate = self.error_estimate_parent_slab(index_ps)
-                
-                print(estimate)
-                print(sum(estimate["absolute"]))
-                break
 
                 max_error_iteration.append(estimate["max"])
 
+                print(f"Termination variable: {estimate['slab_relative_error']:.5}")
+
                 # 4. If relative error is too large, then solve primal and dual FOM on
                 # time step with largest error
-                if estimate["max"] <= self.REL_ERROR_TOL:
+                # if estimate["max"] <= self.REL_ERROR_TOL:
+                if estimate["slab_relative_error"] <= self.REL_ERROR_TOL:
                     break
                 else:
+                    # import random
+                    # estimate['i_max'] = random.randint(0, self.parent_slabs[index_ps]["steps"] - 1)
+                    
+                    worst_index =  estimate["i_max_abs"] # estimate['i_max']
+                    
+
                     print(
-                        f"Enrich for largest error @ (i={estimate['i_max']}, t={self.fom.time_points[estimate['i_max'] + self.parent_slabs[index_ps]['start']]:.2}): {estimate['max']:.5}"
+                        f"Enrich for largest error @ (i={worst_index}, t={self.fom.time_points[worst_index + self.parent_slabs[index_ps]['start']]:.2}): {estimate['max_abs']:.5}"
                     )
-                    self.enrich_parent_slab(index_ps, estimate["i_max"])
-                    fom_solves += 2
+                    self.enrich_parent_slab(index_ps, worst_index)
+                    self.fom_solves += 2
 
                 iteration += 1
             iteration = 1
             print("\n")
             if index_ps < len(self.parent_slabs) - 1:
-                self.parent_slabs[index_ps + 1]["initial_condition"] = self.parent_slabs[index_ps][
-                    "solution"
-                ]["primal"][:, -1]
-
+                self.parent_slabs[index_ps + 1]["initial_condition"] = np.concatenate(
+                    (
+                        self.parent_slabs[index_ps]["solution"]["primal"]["displacement"][:, -1],
+                        self.parent_slabs[index_ps]["solution"]["primal"]["pressure"][:, -1],
+                    )
+                )
+                
                 # DEBUG by trying full IC
-                self.DEBUG_FULL_IC = self.project_vector(
-                    self.parent_slabs[index_ps]["solution"]["primal"][:, -1], type="primal"
+                self.DEBUG_FULL_IC = np.concatenate(
+                    (
+                        self.project_vector(
+                            self.parent_slabs[index_ps]["solution"]["primal"]["displacement"][:, -1],
+                            type="primal",
+                            quantity="displacement",
+                        ),
+                        self.project_vector(
+                            self.parent_slabs[index_ps]["solution"]["primal"]["pressure"][:, -1],
+                            type="primal",
+                            quantity="pressure",
+                        ),
+                    )
                 )
 
         self.validate()
 
         self.timings["run"] += time.time() - execution_time
-        print(f"Total FOM solves: {fom_solves}")
+        #print(f"Total FOM solves: {self.fom_solves}")
 
     def save_vtk(self):
         folder = f"paraview/{self.fom.dt}_{self.fom.T}_{self.fom.problem_name}/ROM"
