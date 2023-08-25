@@ -23,3 +23,5 @@ uml:
 	pyreverse -o png iROM.py
 	mv classes.png iROM.png
 
+make eval:
+	python3 evaluate_iROM.py

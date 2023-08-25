@@ -30,10 +30,12 @@ class iROM:
         TOTAL_ENERGY={
             "primal": {"displacement": 1, "pressure": 1},
         },
+        PLOTTING=True
     ):
         self.fom = fom
         self.REL_ERROR_TOL = REL_ERROR_TOL
         self.MAX_ITERATIONS = MAX_ITERATIONS
+        self.PLOTTING = PLOTTING
 
         self.fom.matrix.update(
             {
@@ -158,6 +160,17 @@ class iROM:
             "run": 0.0,
         }
 
+        iterations_infos = {
+            "error": [],
+            "POD_size": {
+                "primal": {"displacement": [], "pressure": []},
+                "dual": {"displacement": [], "pressure": []},
+            },
+            "functional": [],
+            }
+
+        self.iterations_infos = [iterations_infos.copy() for _ in range(len(self.parent_slabs))]
+
         self.functional_values = np.zeros((self.fom.dofs["time"] - 1,))
 
     def compute_error(self):
@@ -186,17 +199,18 @@ class iROM:
                 projected_solution_pres - self.fom.Y["primal"]["pressure"][:, i]
             ) / np.linalg.norm(self.fom.Y["primal"]["pressure"][:, i])
 
-        # plot results in subplots
-        fig, ax = plt.subplots(2, 1, figsize=(10, 10))
-        ax[0].semilogy(self.fom.time_points[1:], error["displacement"] * 100, label="displacement")
-        ax[0].set_xlabel("time")
-        ax[0].set_ylabel("displacement - error [%]")
-        ax[0].grid()
-        ax[1].semilogy(self.fom.time_points[1:], error["pressure"] * 100, label="pressure")
-        ax[1].set_xlabel("time")
-        ax[1].set_ylabel("pressure - error [%]")
-        ax[1].grid()
-        plt.show()
+        if self.PLOTTING:
+            # plot results in subplots
+            fig, ax = plt.subplots(2, 1, figsize=(10, 10))
+            ax[0].semilogy(self.fom.time_points[1:], error["displacement"] * 100, label="displacement")
+            ax[0].set_xlabel("time")
+            ax[0].set_ylabel("displacement - error [%]")
+            ax[0].grid()
+            ax[1].semilogy(self.fom.time_points[1:], error["pressure"] * 100, label="pressure")
+            ax[1].set_xlabel("time")
+            ax[1].set_ylabel("pressure - error [%]")
+            ax[1].grid()
+            plt.show()
 
     def solve_functional_trajectory(self):
         self.functional_values = np.zeros((self.fom.dofs["time"] - 1,))
@@ -220,106 +234,224 @@ class iROM:
         print(f"Relative Estimate [%] : {100* np.sum(np.abs(self.relative_errors)):.4e}")
 
         # print cost functional trajectory
-        plt.plot(self.fom.time_points[1:], self.fom.functional_values, label="FOM")
-        plt.plot(self.fom.time_points[1:], self.functional_values, linestyle="--", label="ROM")
+        if self.PLOTTING:
+            plt.plot(self.fom.time_points[1:], self.fom.functional_values, label="FOM")
+            plt.plot(self.fom.time_points[1:], self.functional_values, linestyle="--", label="ROM")
 
-        plt.xlabel("time")
-        plt.ylabel("cost functional")
-        plt.legend()
-        plt.grid()
-        plt.show()
+            plt.xlabel("time")
+            plt.ylabel("cost functional")
+            plt.legend()
+            plt.grid()
+            plt.show()
 
-        # ---------------------------------
-        # ------ Plot relative error ------
-        # ---------------------------------
-        plt.semilogy(
-            self.fom.time_points[1:],
-            100
-            * np.abs(self.fom.functional_values - self.functional_values)
-            / np.abs(self.fom.functional_values),
-            label="relative error",
-        )
+            # ---------------------------------
+            # ------ Plot relative error ------
+            # ---------------------------------
+            plt.semilogy(
+                self.fom.time_points[1:],
+                100
+                * np.abs(self.fom.functional_values - self.functional_values)
+                / np.abs(self.fom.functional_values),
+                label="relative error",
+            )
 
-        plt.semilogy(
-            self.fom.time_points[1:],
-            100 * self.fom.dt * self.relative_errors,
-            label="relative estimate",
-        )
+            plt.semilogy(
+                self.fom.time_points[1:],
+                100 * self.fom.dt * self.relative_errors,
+                label="relative estimate",
+            )
 
-        plt.xlabel("time")
-        plt.ylabel("relative error [%]")
-        plt.legend()
-        plt.grid()
-        plt.show()
+            plt.xlabel("time")
+            plt.ylabel("relative error [%]")
+            plt.legend()
+            plt.grid()
+            plt.show()
 
-        # ---------------------------------
-        # ------ Plot absolute error ------
-        # ---------------------------------
+            # ---------------------------------
+            # ------ Plot absolute error ------
+            # ---------------------------------
 
-        plt.semilogy(
-            self.fom.time_points[1:],
-            np.abs(self.fom.functional_values - self.functional_values),
-            label="absolute error",
-        )
+            plt.semilogy(
+                self.fom.time_points[1:],
+                np.abs(self.fom.functional_values - self.functional_values),
+                label="absolute error",
+            )
 
-        plt.semilogy(
-            self.fom.time_points[1:],
-            np.abs(self.errors),
-            label="absolute estimate",
-        )
+            plt.semilogy(
+                self.fom.time_points[1:],
+                np.abs(self.errors),
+                label="absolute estimate",
+            )
 
-        plt.xlabel("time")
-        plt.ylabel("absolute error")
-        plt.legend()
-        plt.grid()
-        plt.show()
+            plt.xlabel("time")
+            plt.ylabel("absolute error")
+            plt.legend()
+            plt.grid()
+            plt.show()
 
     def plot_bottom_solution(self):
         times = self.fom.special_times.copy()
         for i, t in enumerate(self.fom.time_points):
             if np.abs(t - times[0]) <= 1e-4:
                 times.pop(0)
-                plt.plot(
-                    self.fom.bottom_x_u,
-                    self.bottom_matrix_u.dot(self.solution["primal"]["displacement"][:, i]),
-                    label=f"t = {t} (FOM)",
-                )
-                plt.plot(
-                    self.fom.bottom_x_u,
-                    self.bottom_matrix_u.dot(self.solution["primal"]["displacement"][:, i]),
-                    linestyle="--",
-                    label=f"t = {t} (ROM)",
-                )
+                if self.PLOTTING:
+                    plt.plot(
+                        self.fom.bottom_x_u,
+                        self.bottom_matrix_u.dot(self.solution["primal"]["displacement"][:, i]),
+                        label=f"t = {t} (FOM)",
+                    )
+                    plt.plot(
+                        self.fom.bottom_x_u,
+                        self.bottom_matrix_u.dot(self.solution["primal"]["displacement"][:, i]),
+                        linestyle="--",
+                        label=f"t = {t} (ROM)",
+                    )
                 if len(times) == 0:
                     break
-        plt.xlabel("x")
-        plt.ylabel(r"$u_x(x,0)$")
-        plt.title("x-Displacement at bottom boundary")
-        plt.legend()
-        plt.show()
+        if self.PLOTTING:
+            plt.xlabel("x")
+            plt.ylabel(r"$u_x(x,0)$")
+            plt.title("x-Displacement at bottom boundary")
+            plt.legend()
+            plt.show()
 
         times = self.fom.special_times.copy()
         for i, t in enumerate(self.fom.time_points):
             if np.abs(t - times[0]) <= 1e-4:
                 times.pop(0)
-                plt.plot(
-                    self.fom.bottom_x_p,
-                    self.bottom_matrix_p.dot(self.solution["primal"]["pressure"][:, i]),
-                    label=f"t = {t} (FOM)",
-                )
-                plt.plot(
-                    self.fom.bottom_x_p,
-                    self.bottom_matrix_p.dot(self.solution["primal"]["pressure"][:, i]),
-                    linestyle="--",
-                    label=f"t = {t} (ROM)",
-                )
+                if self.PLOTTING:
+                    plt.plot(
+                        self.fom.bottom_x_p,
+                        self.bottom_matrix_p.dot(self.solution["primal"]["pressure"][:, i]),
+                        label=f"t = {t} (FOM)",
+                    )
+                    plt.plot(
+                        self.fom.bottom_x_p,
+                        self.bottom_matrix_p.dot(self.solution["primal"]["pressure"][:, i]),
+                        linestyle="--",
+                        label=f"t = {t} (ROM)",
+                    )
                 if len(times) == 0:
                     break
-        plt.xlabel("x")
-        plt.ylabel(r"$p(x,0)$")
-        plt.title("Pressure at bottom boundary")
+
+        if self.PLOTTING:
+            plt.xlabel("x")
+            plt.ylabel(r"$p(x,0)$")
+            plt.title("Pressure at bottom boundary")
+            plt.legend()
+            plt.show()
+
+    def plots_for_paper(self):
+
+        # ---------------------------------
+        # Error over iterations
+        # ---------------------------------
+
+        fom_cf = np.sum(self.fom.functional_values)
+
+        error_cf = np.abs(fom_cf - np.array(self.iterations_infos[0]["functional"]))/np.abs(fom_cf)
+        plt.semilogy(
+            100*np.array(self.iterations_infos[0]["error"]),
+            label="estimated error",
+        )
+        plt.semilogy(
+            100*error_cf,
+            label="true error",
+        )
+        plt.xlabel("#iterations")
+        plt.ylabel("error [%]")
         plt.legend()
-        plt.show()
+        plt.grid()
+        if self.PLOTTING:
+            plt.show()
+        else:
+            name=f"images/tol={self.REL_ERROR_TOL}_parent_slab={self.parent_slabs[0]['steps']}_error_over_iterations.eps"
+            plt.savefig(name, format="eps")
+            plt.clf()
+
+        # ---------------------------------
+        # Cost functional over iterations
+        # ---------------------------------
+
+        plt.plot(
+            np.array(self.iterations_infos[0]["functional"]),
+            label="cost functional"
+        )
+        plt.plot(
+            [1, len(self.iterations_infos[0]["functional"])],[fom_cf,fom_cf], color="green", linestyle="--",
+        )
+        plt.xlabel("#iterations")
+        plt.ylabel("cost functional")
+        plt.grid()
+        if self.PLOTTING:
+            plt.show()
+        else:
+            name=f"images/tol={self.REL_ERROR_TOL}_parent_slab={self.parent_slabs[0]['steps']}_cost_functional_iterations.eps"
+            plt.savefig(name, format="eps")
+            plt.clf()
+
+        # ---------------------------------
+        # POD size over iterations
+        # ---------------------------------
+
+        plt.plot(
+            np.array(self.iterations_infos[0]["POD_size"]["primal"]["displacement"])+0.25,
+            label="primal displacement"#, linestyle="--",marker="x",
+        )
+
+        plt.plot(
+            np.array(self.iterations_infos[0]["POD_size"]["primal"]["pressure"])+0.25,
+            label="primal pressure"#, linestyle="--",marker="x",
+        )
+
+        plt.plot(
+            np.array(self.iterations_infos[0]["POD_size"]["dual"]["displacement"]),
+            label="dual displacement"#,linestyle="--",marker="o",fillstyle="none",
+        )
+
+        plt.plot(
+            np.array(self.iterations_infos[0]["POD_size"]["dual"]["pressure"]),
+            label="dual pressure"#,linestyle="--",marker="o",fillstyle="none",
+        )
+
+        plt.xlabel("#iterations")
+        plt.ylabel("POD basis size")
+        plt.legend()
+        plt.grid()
+        if self.PLOTTING:
+            plt.show()
+        else:
+            name=f"images/tol={self.REL_ERROR_TOL}_parent_slab={self.parent_slabs[0]['steps']}_POD_size.eps"
+            plt.savefig(name, format="eps")
+            plt.clf()
+
+        # ---------------------------------
+        # Functional over time
+        # ---------------------------------
+
+        plt.plot(
+            self.fom.time_points[1:],
+            self.fom.functional_values,
+            label="FOM",
+        )
+        plt.plot(
+            self.fom.time_points[1:],
+            self.functional_values,
+            label="ROM", linestyle="--",
+        )
+        plt.xlabel("time")
+        plt.ylabel("cost functional")
+        plt.legend()
+        plt.grid()
+        if self.PLOTTING:
+            plt.show()
+        else:
+            name=f"images/tol={self.REL_ERROR_TOL}_parent_slab={self.parent_slabs[0]['steps']}_functional_over_time.eps"
+            plt.savefig(name, format="eps")
+            plt.clf()
+
+
+
 
     def iPOD(self, snapshot, type, quantity):
         # type is either "primal" or "dual"
@@ -379,8 +511,7 @@ class iROM:
                 U_k, S_k, _ = scipy.linalg.svd(K, full_matrices=False)
 
                 # compute the number of POD modes to be kept
-                r = self.POD[type][quantity]["basis"].shape[1] #+ 1
-
+                r = self.POD[type][quantity]["basis"].shape[1] 
                 while (
                     np.dot(S_k[0:r], S_k[0:r])
                     <= self.POD[type][quantity]["energy"] * self.POD[type][quantity]["TOL_ENERGY"]
@@ -429,9 +560,9 @@ class iROM:
         # primal POD
         time_points = self.fom.time_points[:]
 
-        for i, t in enumerate(time_points[:3]):
+        for i, t in enumerate(time_points[:1]):
             for quantity in self.fom.quantities:
-                self.iPOD(self.fom.Y["primal"][quantity][:, i], type="primal", quantity=quantity)
+                self.iPOD(self.fom.Y["primal"][quantity][:, i+1], type="primal", quantity=quantity)
             
         print(
             "DISPLACEMENT primal POD size:   ", self.POD["primal"]["displacement"]["basis"].shape[1]
@@ -439,9 +570,9 @@ class iROM:
         print("PRESSURE primal POD size:   ", self.POD["primal"]["pressure"]["basis"].shape[1])
 
         # dual POD brought to you by iPOD
-        for i, t in enumerate(time_points[:3]):
+        for i, t in enumerate(time_points[:1]):
             for quantity in self.fom.quantities:
-                self.iPOD(self.fom.Y["dual"][quantity][:, i], type="dual", quantity=quantity)
+                self.iPOD(self.fom.Y["dual"][quantity][:, i+1], type="dual", quantity=quantity)
 
         print("DISPLACEMENT dual POD size:   ", self.POD["dual"]["displacement"]["basis"].shape[1])
         print("PRESSURE dual POD size:   ", self.POD["dual"]["pressure"]["basis"].shape[1])
@@ -521,6 +652,9 @@ class iROM:
                 ]
             )
 
+            # numpy lu decomposition of system matrix
+            self.lu_primal, self.piv_primal = scipy.linalg.lu_factor(self.matrix["primal"]["system_matrix"])
+
             # build primal rhs matrix from blocks
             self.matrix["primal"]["rhs_matrix"] = np.block(
                 [
@@ -575,6 +709,9 @@ class iROM:
                     [matrix_elasto_pressure_dual, matrix_time_pressure_dual + matrix_laplace_dual],
                 ]
             )
+
+            # numpy lu decomposition of system matrix
+            self.lu_dual, self.piv_dual = scipy.linalg.lu_factor(self.matrix["dual"]["system_matrix"])
 
             # build dual rhs matrix from blocks
             self.matrix["dual"]["rhs_matrix"] = np.block(
@@ -632,7 +769,6 @@ class iROM:
                 quantity1="pressure",
             )   
 
-            print("RUNNING UPDATE_MATRICES FOR ESTIMATOR")
 
             # build estimator system matrix from blocks
             # build system matrix from blocks
@@ -688,8 +824,7 @@ class iROM:
             # print(f"t = {t:.4f}")
             n = i + 1
 
-            solution = np.linalg.solve(
-                self.matrix["primal"]["system_matrix"],
+            solution = scipy.linalg.lu_solve((self.lu_primal, self.piv_primal),
                 self.matrix["primal"]["rhs_matrix"].dot(solution)
                 + np.concatenate(
                     (
@@ -734,8 +869,8 @@ class iROM:
             dual_rhs[self.POD["dual"]["displacement"]["basis"].shape[1] :] += (
                 self.fom.dt * self.vector["dual"]["pressure_down"]
             )
-
-            dual_solution = np.linalg.solve(self.matrix["dual"]["system_matrix"], dual_rhs)
+            dual_solution = scipy.linalg.lu_solve((self.lu_dual, self.piv_dual), dual_rhs)
+            # dual_solution = np.linalg.solve(self.matrix["dual"]["system_matrix"], dual_rhs)
 
             self.solution["dual"]["displacement"][:, n] = dual_solution[
                 : self.POD["dual"]["displacement"]["basis"].shape[1]
@@ -831,8 +966,7 @@ class iROM:
                 )
 
     def solve_primal_time_step_slab(self, old_solution):
-        return np.linalg.solve(
-            self.matrix["primal"]["system_matrix"],
+        return scipy.linalg.lu_solve((self.lu_primal, self.piv_primal),
             self.matrix["primal"]["rhs_matrix"].dot(old_solution)
             + np.concatenate(
                 (
@@ -847,7 +981,10 @@ class iROM:
         dual_rhs[self.POD["dual"]["displacement"]["basis"].shape[1] :] += (
             self.fom.dt * self.vector["dual"]["pressure_down"]
         )
-        return np.linalg.solve(self.matrix["dual"]["system_matrix"], dual_rhs)
+        # solve with lu deccomposition 
+        return scipy.linalg.lu_solve((self.lu_dual, self.piv_dual), dual_rhs)
+
+        # return np.linalg.solve(self.matrix["dual"]["system_matrix"], dual_rhs)
 
     def validate(self):
         self.solve_primal()
@@ -917,7 +1054,8 @@ class iROM:
 
     def error_estimate_parent_slab(self, index_parent_slab):
         execution_time = time.time()
-        print("num steps: ", self.parent_slabs[index_parent_slab]["steps"])
+        if self.PLOTTING:
+            print("num steps: ", self.parent_slabs[index_parent_slab]["steps"])
         errors = np.zeros((self.parent_slabs[index_parent_slab]["steps"],))
         relative_errors = np.zeros(
             (self.parent_slabs[index_parent_slab]["steps"],))
@@ -1127,10 +1265,11 @@ class iROM:
                 f"====== PARENT SLAB: {index_ps} n=({self.parent_slabs[index_ps]['start']}, {self.parent_slabs[index_ps]['end']}) , t=({self.fom.time_points[self.parent_slabs[index_ps]['start']]:.2}, {self.fom.time_points[np.min([self.parent_slabs[index_ps]['end'],len(self.fom.time_points)-1])]:.2}) ======"
             )
             while iteration <= self.MAX_ITERATIONS:
-                print(f"====== Iteration: {iteration} ======")
-                print(
-                    f"Bases: {self.POD['primal']['displacement']['basis'].shape[1]}+{self.POD['primal']['pressure']['basis'].shape[1]} / {self.POD['dual']['displacement']['basis'].shape[1]} + {self.POD['dual']['pressure']['basis'].shape[1]}"
-                )
+                if self.PLOTTING:
+                    print(f"====== Iteration: {iteration} ======")
+                    print(
+                        f"Bases: {self.POD['primal']['displacement']['basis'].shape[1]}+{self.POD['primal']['pressure']['basis'].shape[1]} / {self.POD['dual']['displacement']['basis'].shape[1]} + {self.POD['dual']['pressure']['basis'].shape[1]}"
+                    )
                 # 1. Solve primal ROM
                 self.solve_primal_parent_slab(index_ps)
 
@@ -1142,7 +1281,18 @@ class iROM:
 
                 max_error_iteration.append(estimate["max"])
 
-                print(f"Termination variable: {estimate['slab_relative_error']:.5}")
+                plot_investigation = True
+
+                if plot_investigation:
+                    self.iterations_infos[index_ps]["error"].append(estimate["slab_relative_error"])
+                    self.iterations_infos[index_ps]["POD_size"]["primal"]["displacement"].append(self.POD["primal"]["displacement"]["basis"].shape[1])
+                    self.iterations_infos[index_ps]["POD_size"]["primal"]["pressure"].append(self.POD["primal"]["pressure"]["basis"].shape[1])
+                    self.iterations_infos[index_ps]["POD_size"]["dual"]["displacement"].append(self.POD["dual"]["displacement"]["basis"].shape[1])
+                    self.iterations_infos[index_ps]["POD_size"]["dual"]["pressure"].append(self.POD["dual"]["pressure"]["basis"].shape[1])
+                    self.iterations_infos[index_ps]["functional"].append(np.sum(self.parent_slabs[index_ps]["functional"]))
+
+                if self.PLOTTING:
+                    print(f"Termination variable: {estimate['slab_relative_error']:.5}")
 
                 # 4. If relative error is too large, then solve primal and dual FOM on
                 # time step with largest error
@@ -1155,10 +1305,10 @@ class iROM:
                     
                     worst_index =  estimate["i_max_abs"] # estimate['i_max']
                     
-
-                    print(
-                        f"Enrich for largest error @ (i={worst_index}, t={self.fom.time_points[worst_index + self.parent_slabs[index_ps]['start']]:.2}): {estimate['max_abs']:.5}"
-                    )
+                    if self.PLOTTING:
+                        print(
+                            f"Enrich for largest error @ (i={worst_index}, t={self.fom.time_points[worst_index + self.parent_slabs[index_ps]['start']]:.2}): {estimate['max_abs']:.5}"
+                        )
                     self.enrich_parent_slab(index_ps, worst_index)
                     self.fom_solves += 2
 
