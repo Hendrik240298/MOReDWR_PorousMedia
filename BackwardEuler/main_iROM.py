@@ -55,22 +55,22 @@ n_timesteps = int(T / dt)
 # ----------- ROM parameters -----------
 REL_ERROR_TOL = 1e-2
 MAX_ITERATIONS = 1000
-PARENT_SLAB_SIZE = int(n_timesteps)
+PARENT_SLAB_SIZE = int(n_timesteps/1)
 TOTAL_ENERGY = {
     "primal": {
-        "displacement": 1 - 1e-8,
-        "pressure": 1 - 1e-8,
+        "displacement": 1 - 1e-4,
+        "pressure": 1 - 1e-10,
     },
     "dual": {
-        "displacement": 1 - 1e-10,
-        "pressure": 1 - 1e-10,
+        "displacement": 1 - 1e-8,
+        "pressure": 1 - 1e-8,
     },
 }
 
 # ----------- FOM -----------
 fom = FOM(t, T, dt, Mandel())
 start_time_fom = time.time()
-fom.solve_primal(force_recompute=True)
+fom.solve_primal(force_recompute=False)
 end_time_fom = time.time()
 fom.solve_dual(force_recompute=False)
 
@@ -103,6 +103,7 @@ rom.plot_bottom_solution()
 
 # ----------- Results -----------
 time_FOM = end_time_fom - start_time_fom
+time_FOM = 163. #46.5
 time_iROM = end_time_rom - start_time_rom
 
 print("FOM time:             " + str(time_FOM))

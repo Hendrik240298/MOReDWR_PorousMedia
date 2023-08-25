@@ -39,8 +39,14 @@ class FOM:
 
         self.mesh = None
         if self.problem_name == "Mandel":
-            self.mesh = RectangleMesh(Point(0.0, 0.0), Point(100.0, 20.0), 16, 16)
+            self.mesh = RectangleMesh(Point(0.0, 0.0), Point(100.0, 20.0), 5*16, 16)
             self.dim = self.mesh.geometry().dim()
+
+            # plt.figure(figsize=(50,21))
+            # plot(self.mesh)
+            # plt.axis("off")
+            # plt.savefig("mesh.svg",  bbox_inches='tight') #,transparent=True)
+            # plt.clf()
 
             # plt.title("Mesh")
             # plot(self.mesh)
@@ -59,6 +65,8 @@ class FOM:
             "pressure": self.V.sub(1).dim(),
             "time": self.time_points.shape[0],
         }
+
+        print(f"DOFS: {self.dofs}")
 
         if self.problem_name == "Mandel":
             left = CompiledSubDomain("near(x[0], 0.) && on_boundary")
