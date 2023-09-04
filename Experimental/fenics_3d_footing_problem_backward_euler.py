@@ -101,9 +101,9 @@ def stress(u):
     return lame_coefficient_lambda*div(u)*Identity(dim) + lame_coefficient_mu*(grad(u) + grad(u).T)
 
 n = FacetNormal(mesh)
-A_u = inner(stress(u), grad(phi_u))*dx - alpha_biot*inner(p*Identity(dim), grad(phi_u))*dx + alpha_biot*inner(p*n, phi_u)*ds_compression + alpha_biot*inner(p*n, phi_u)*ds_neumann
+A_u = inner(stress(u), grad(phi_u))*dx - alpha_biot*inner(p*Identity(dim), grad(phi_u))*dx #+ alpha_biot*inner(p*n, phi_u)*ds_compression + alpha_biot*inner(p*n, phi_u)*ds_neumann
 A_p = alpha_biot*div(u)*phi_p*dx + k*(K_biot/viscosity_biot)*inner(grad(p), grad(phi_p))*dx #+ c_biot*p*phi_p*dx
-L = Constant(traction_z_biot)*Phi[2]*ds_compression + alpha_biot*div(u_n)*phi_p*dx #+ c_biot*p_n*phi_p*dx
+L = Constant(-traction_z_biot)*Phi[2]*ds_compression + alpha_biot*div(u_n)*phi_p*dx #+ c_biot*p_n*phi_p*dx
 
 # Time-stepping
 Uh = Function(V) # Uh = U_{n+1}: current solution
