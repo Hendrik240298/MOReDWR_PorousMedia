@@ -122,6 +122,7 @@ while(t+k <= T+1e-8):
     solve_start_time = time.time()
     solve(A_u+A_p == L, Uh, bcs, solver_parameters={'linear_solver':'mumps'})
     print(f"    Solve Time: {round(time.time() - solve_start_time, 5)} s")
+    print(f"    u(0,0,64) = {Uh(0.,0.,64.)}")
     
     vtk_displacement = File(f"{folder}/displacement_{str(time_step_number)}.pvd")
     vtk_pressure = File(f"{folder}/pressure_{str(time_step_number)}.pvd")
