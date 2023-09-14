@@ -69,8 +69,8 @@ TOTAL_ENERGY = {
 # ----------- FOM -----------
 start_time_fom = time.time()
 fom = FOM(t, T, dt, Mandel())
-fom.solve_primal(force_recompute=True)
-fom.solve_dual(force_recompute=True)
+fom.solve_primal(force_recompute=False)
+fom.solve_dual(force_recompute=False)
 end_time_fom = time.time()
 
 fom.solve_functional_trajectory()

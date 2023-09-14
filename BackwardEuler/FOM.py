@@ -343,7 +343,7 @@ class FOM:
 
     def save_solution(self, solution_type="primal"):
         pattern = r"solution_" + solution_type + "_" + r"\d{6}\.npz"
-        files = os.listdir(self.SAVE_DIR)
+        files = os.listdir(os.path.abspath(self.SAVE_DIR))
         files = [
             self.SAVE_DIR + f
             for f in files
