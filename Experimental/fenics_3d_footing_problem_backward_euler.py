@@ -6,23 +6,23 @@ from ufl import replace
 # PARAMETERS #
 ##############
 # M_biot = Biot's constant
-M_biot = 1.75e+7 #2.5e+12
+M_biot = 2.5e+12 #1.75e+7 #2.5e+12
 c_biot = 1.0 / M_biot
 
 # alpha_biot = b_biot = Biot's modulo
-alpha_biot = 0.0 #1.0 # TODO: change back to 1.
+alpha_biot = 1.0 #0.0 #1.0 # TODO: change back to 1.
 viscosity_biot = 1.0e-3
-K_biot = 1.0e-6
+K_biot = 1.0e-13 #1.0e-6
 
 # Traction
 traction_x_biot = 0.0
 traction_y_biot = 0.0 #-1.0e+7
-traction_z_biot = 0.1
+traction_z_biot = -1.0e+7 #0.1
 
 # Solid parameters
-youngs_modulus_E = 3.0e+4 #1.0e+8 #3.0e+4 # TODO: change back to 3.0e+4
+#youngs_modulus_E = 3.0e+4 #1.0e+8 #3.0e+4 # TODO: change back to 3.0e+4
 poisson_ratio_nu = 0.2
-lame_coefficient_mu = youngs_modulus_E / (2. * (1. + poisson_ratio_nu))
+lame_coefficient_mu = 1.0e+8 #youngs_modulus_E / (2. * (1. + poisson_ratio_nu))
 lame_coefficient_lambda = (2. * poisson_ratio_nu * lame_coefficient_mu) / (1.0 - 2. * poisson_ratio_nu)
 print(f"λ = {lame_coefficient_mu}, μ = {lame_coefficient_lambda}")
 
@@ -33,7 +33,7 @@ import time
 
 set_log_active(False) # turn off FEniCS logging
 
-mesh = BoxMesh(Point(-32.,-32.,0.), Point(32.,32.,64.), 24, 24, 24)
+mesh = BoxMesh(Point(-32.,-32.,0.), Point(32.,32.,64.), 8, 8, 8) #24, 24, 24)
 dim = mesh.geometry().dim()
 
 cpu_start_time = time.time()
@@ -41,9 +41,9 @@ cpu_start_time = time.time()
 # start time
 t = 0.
 # end time
-T = 0.5
+T = 5.0e+6 #0.5
 # time step size
-k = 0.001 #0.000000001 #0.001 #0.01
+k = 1.0e+3 #0.001 #0.000000001 #0.001 #0.01
 # time step number
 time_step_number = 0
 
@@ -77,7 +77,7 @@ ds_neumann = Measure("ds", subdomain_data=facet_marker, subdomain_id=3)
 bc_down_x = DirichletBC(V.sub(0).sub(0), Constant(0.), dirichlet) # dirichlet: u_x = 0
 bc_down_y = DirichletBC(V.sub(0).sub(1), Constant(0.), dirichlet) # dirichlet: u_y = 0
 bc_down_z = DirichletBC(V.sub(0).sub(2), Constant(0.), dirichlet) # dirichlet: u_z = 0
-bc_compression_p = DirichletBC(V.sub(1), Constant(0.), compression) # dirichlet: p = 0
+bc_compression_p = DirichletBC(V.sub(1), Constant(0.), dirichlet) # dirichlet: p = 0
 bcs = [bc_down_x, bc_down_y, bc_down_z, bc_compression_p]
 
 # zero initial condition for u and p
@@ -99,8 +99,8 @@ def stress(u):
     return lame_coefficient_lambda*div(u)*Identity(dim) + lame_coefficient_mu*(grad(u) + grad(u).T)
 
 n = FacetNormal(mesh)
-A_u = inner(stress(u), grad(phi_u))*dx - Constant(alpha_biot)*inner(p*Identity(dim), grad(phi_u))*dx
- #+ alpha_biot*inner(p*n, phi_u)*ds_compression + alpha_biot*inner(p*n, phi_u)*ds_neumann
+A_u = inner(stress(u), grad(phi_u))*dx - Constant(alpha_biot)*inner(p*Identity(dim), grad(phi_u))*dx + alpha_biot*inner(p*n, phi_u)*ds_compression
+ # + alpha_biot*inner(p*n, phi_u)*ds_neumann
 A_p = Constant(alpha_biot)*div(u)*phi_p*dx + k*(K_biot/viscosity_biot)*inner(grad(p), grad(phi_p))*dx + c_biot*p*phi_p*dx
 L = inner(Constant((traction_x_biot, traction_y_biot, traction_z_biot)), phi_u)*ds_compression + Constant(alpha_biot)*div(u_n)*phi_p*dx + c_biot*p_n*phi_p*dx
 # Constant(traction_z_biot)*phi_u[2]*ds_compression
@@ -112,7 +112,7 @@ folder = f"output"
 if not os.path.exists(folder):
     os.makedirs(folder)
 
-while(t+k <= T+1e-8):
+while(t+k <= T+1e-4):
     # Update current time
     t += k
 
