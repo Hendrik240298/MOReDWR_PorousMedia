@@ -17,10 +17,10 @@ K_biot = 1.0e-6
 # Traction
 traction_x_biot = 0.0
 traction_y_biot = 0.0 #-1.0e+7
-traction_z_biot = 0.00001
+traction_z_biot = 0.1
 
 # Solid parameters
-youngs_modulus_E = 1.0e+8 #3.0e+4 # TODO: change back to 3.0e+4
+youngs_modulus_E = 3.0e+4 #1.0e+8 #3.0e+4 # TODO: change back to 3.0e+4
 poisson_ratio_nu = 0.2
 lame_coefficient_mu = youngs_modulus_E / (2. * (1. + poisson_ratio_nu))
 lame_coefficient_lambda = (2. * poisson_ratio_nu * lame_coefficient_mu) / (1.0 - 2. * poisson_ratio_nu)
@@ -33,7 +33,7 @@ import time
 
 set_log_active(False) # turn off FEniCS logging
 
-mesh = BoxMesh(Point(-32.,-32.,0.), Point(32.,32.,64.), 16, 16, 16)
+mesh = BoxMesh(Point(-32.,-32.,0.), Point(32.,32.,64.), 24, 24, 24)
 dim = mesh.geometry().dim()
 
 cpu_start_time = time.time()
@@ -43,7 +43,7 @@ t = 0.
 # end time
 T = 0.5
 # time step size
-k = 0.000000001 #0.001 #0.01
+k = 0.001 #0.000000001 #0.001 #0.01
 # time step number
 time_step_number = 0
 
@@ -54,13 +54,13 @@ element = {
 V = FunctionSpace(mesh, MixedElement(*element.values()))
 print(f"Number of spatial DoFs: {V.dim()} ({V.sub(0).dim()} + {V.sub(1).dim()})")
 
-# compression = CompiledSubDomain("near(x[2], 64.) && x[0] >= -16. && x[0] <= 16. && x[1] >= -16. && x[1] <= 16. && on_boundary")
-# dirichlet = CompiledSubDomain("near(x[2], 0.) && on_boundary")
-# neumann = CompiledSubDomain("( near(x[0], -32.) || near(x[0], 32.) || near(x[1], -32.) || near(x[1], 32.) || (near(x[2], 64.) && (x[0] <= -16. || x[0] >= 16. || x[1] <= -16. || x[1] >= 16.) ) ) && on_boundary")
-
-compression = CompiledSubDomain("near(x[2], 64.) && x[0] >= 0. && x[0] <= 32. && x[1] >= 0. && x[1] <= 32. && on_boundary")
+compression = CompiledSubDomain("near(x[2], 64.) && x[0] >= -16. && x[0] <= 16. && x[1] >= -16. && x[1] <= 16. && on_boundary")
 dirichlet = CompiledSubDomain("near(x[2], 0.) && on_boundary")
-neumann = CompiledSubDomain("( near(x[0], -32.) || near(x[0], 32.) || near(x[1], -32.) || near(x[1], 32.) || (near(x[2], 64.) && (x[0] <= 0. || x[1] <= 0.) ) ) && on_boundary")
+neumann = CompiledSubDomain("( near(x[0], -32.) || near(x[0], 32.) || near(x[1], -32.) || near(x[1], 32.) || (near(x[2], 64.) && (x[0] <= -16. || x[0] >= 16. || x[1] <= -16. || x[1] >= 16.) ) ) && on_boundary")
+
+# compression = CompiledSubDomain("near(x[2], 64.) && x[0] >= 0. && x[0] <= 32. && x[1] >= 0. && x[1] <= 32. && on_boundary")
+# dirichlet = CompiledSubDomain("(near(x[1], -32.) || near(x[1], 32.) ||  near(x[2], 0.))  && on_boundary")
+# neumann = CompiledSubDomain("( near(x[0], -32.) || near(x[0], 32.) || (near(x[2], 64.) && (x[0] <= 0. || x[1] <= 0.) ) ) && on_boundary")
 
 facet_marker = MeshFunction("size_t", mesh, 1)
 facet_marker.set_all(0)
@@ -123,6 +123,8 @@ while(t+k <= T+1e-8):
     solve(A_u+A_p == L, Uh, bcs, solver_parameters={'linear_solver':'mumps'})
     print(f"    Solve Time: {round(time.time() - solve_start_time, 5)} s")
     print(f"    u(0,0,64) = {Uh(0.,0.,64.)}")
+    print(f"    u(1,1,64) = {Uh(1.,1.,64.)}")
+    print(f"    u_max = {Uh.vector().max()}")
     
     vtk_displacement = File(f"{folder}/displacement_{str(time_step_number)}.pvd")
     vtk_pressure = File(f"{folder}/pressure_{str(time_step_number)}.pvd")
