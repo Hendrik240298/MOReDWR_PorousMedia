@@ -71,7 +71,7 @@ TOTAL_ENERGY = {
 }
 
 # ----------- FOM -----------
-fom = FOM(t, T, dt, Mandel())
+fom = FOM(t, T, dt, Mandel(), goal="endtime")
 start_time_fom = time.time()
 fom.solve_primal(force_recompute=False)
 end_time_fom = time.time()
@@ -79,7 +79,6 @@ fom.solve_dual(force_recompute=False)
 
 fom.solve_functional_trajectory()
 # fom.plot_bottom_solution()
-
 
 REL_ERROR_TOLERANCES = [0.1e-2, 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
 
@@ -117,6 +116,7 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
     # ----------- Results -----------
     time_FOM = end_time_fom - start_time_fom
     time_FOM = 163. #46.5
+    print("WARNING: FOM time is set to 163 seconds from previous run.")
     time_iROM = end_time_rom - start_time_rom
 
     J_h_t = fom.functional_values
@@ -145,6 +145,8 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
 
     rom.plots_for_paper()
 
+    quit()
+
 
 header_legend= ["relative error [%]", "speedup", "FOM solves", "size ROM", "effectivity", "indicator"]
 
@@ -156,37 +158,5 @@ print(table)
 table = tabulate(result_matrix, headers=header_legend,
                  showindex=100*np.array(REL_ERROR_TOLERANCES), tablefmt="latex")
 print(table)
-
-# print("FOM time:             " + str(time_FOM))
-# print("iROM time:            " + str(time_iROM))
-# print("speedup: act/max:     " + str(time_FOM/time_iROM) + " / " + str((fom.dofs["time"]-1)/rom.fom_solves))
-# print("Size ROM: u/p         " + str(rom.POD["primal"]["displacement"]["basis"].shape[1]) + " / " + str(rom.POD["primal"]["pressure"]["basis"].shape[1]))
-# print("Size ROM - dual: u/p  " + str(rom.POD["dual"]["displacement"]["basis"].shape[1]) + " / " + str(rom.POD["dual"]["pressure"]["basis"].shape[1]))
-# print("FOM solves:           " + str(rom.fom_solves)
-#                                + " / " + str(fom.dofs["time"]-1))
-
-# # %% Computing reduced and full Cost functional
-
-# # J_h_t = np.empty([slab_properties["n_total"], 1])
-# # for i in range(slab_properties["n_total"]):
-# #     J_h_t[i] = primal_solutions_slab["value"][i].dot(dual_rhs_no_bc[i])
-
-
-
-# print("J_h:                 " + str(np.sum(J_h_t)))
-# print("J_r:                 " + str(np.sum(J_r_t)))
-# print("|J(u_h) - J(u_r)|/|J(u_h)| =", np.abs(np.sum(J_h_t) - np.sum(J_r_t))/np.abs(np.sum(J_h_t)))
-# print("true error:          " + str(true_error))
-# print("estimated error:     " + str(estimated_error))
-# print("effectivity index:   " + str(effectivity))
-# # print(" ")
-# print("true abs error:      " + str(true_abs_error))
-# print("estimated abs error: " + str(estimated_abs_error))
-# print("inidicator index:    " + str(true_abs_error/estimated_abs_error))
-
-# # # %% error calculation
-
-
-# temporal_interval_error_relative_fom = (J_h_t - J_r_t)/J_h_t
 
 

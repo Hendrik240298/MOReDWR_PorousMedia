@@ -213,16 +213,21 @@ class iROM:
             plt.show()
 
     def solve_functional_trajectory(self):
-        self.functional_values = np.zeros((self.fom.dofs["time"] - 1,))
-        for i in range(self.fom.dofs["time"] - 1):
-            self.functional_values[i] = (
-                self.vector["primal"]["pressure_down"].dot(
-                    self.solution["primal"]["pressure"][:, i + 1]
+        if self.fom.goal == "mean":
+            self.functional_values = np.zeros((self.fom.dofs["time"] - 1,))
+            for i in range(self.fom.dofs["time"] - 1):
+                self.functional_values[i] = (
+                    self.vector["primal"]["pressure_down"].dot(
+                        self.solution["primal"]["pressure"][:, i + 1]
+                    )
+                    * self.fom.dt
                 )
-                * self.fom.dt
+            self.functional = np.sum(self.functional_values)
+        elif self.fom.goal == "endtime":
+            self.functional_values = None
+            self.functional = (
+                self.vector["primal"]["pressure_down"].dot(self.solution["primal"]["pressure"][:, -1])
             )
-
-        self.functional = np.sum(self.functional_values)
         print(f"Cost functional - FOM : {self.fom.functional:.4e}")
         print(f"Cost functional - ROM : {self.functional:.4e}")
         print(f"Error:                  {np.abs(self.functional - self.fom.functional):.4e}")
@@ -234,7 +239,7 @@ class iROM:
         print(f"Relative Estimate [%] : {100* np.sum(np.abs(self.relative_errors)):.4e}")
 
         # print cost functional trajectory
-        if self.PLOTTING:
+        if self.PLOTTING and self.fom.goal == "mean":
             plt.plot(self.fom.time_points[1:], self.fom.functional_values, label="FOM")
             plt.plot(self.fom.time_points[1:], self.functional_values, linestyle="--", label="ROM")
 
@@ -365,7 +370,11 @@ class iROM:
         if self.PLOTTING:
             plt.show()
         else:
-            name=f"images/tol={self.REL_ERROR_TOL}_parent_slab={self.parent_slabs[0]['steps']}_error_over_iterations.eps"
+            # create images folder if not existent
+            if not os.path.exists("images"):
+                os.makedirs("images")
+
+            name=f"images/tol={self.REL_ERROR_TOL}_parent_slab={self.parent_slabs[0]['steps']}_goal_{self.fom.goal}_error_over_iterations.eps"
             plt.savefig(name, format="eps")
             plt.clf()
 
@@ -386,7 +395,7 @@ class iROM:
         if self.PLOTTING:
             plt.show()
         else:
-            name=f"images/tol={self.REL_ERROR_TOL}_parent_slab={self.parent_slabs[0]['steps']}_cost_functional_iterations.eps"
+            name=f"images/tol={self.REL_ERROR_TOL}_parent_slab={self.parent_slabs[0]['steps']}_goal_{self.fom.goal}_cost_functional_iterations.eps"
             plt.savefig(name, format="eps")
             plt.clf()
 
@@ -421,36 +430,35 @@ class iROM:
         if self.PLOTTING:
             plt.show()
         else:
-            name=f"images/tol={self.REL_ERROR_TOL}_parent_slab={self.parent_slabs[0]['steps']}_POD_size.eps"
+            name=f"images/tol={self.REL_ERROR_TOL}_parent_slab={self.parent_slabs[0]['steps']}_goal_{self.fom.goal}_POD_size.eps"
             plt.savefig(name, format="eps")
             plt.clf()
 
-        # ---------------------------------
-        # Functional over time
-        # ---------------------------------
+        if self.fom.goal == "mean":
+            # ---------------------------------
+            # Functional over time
+            # ---------------------------------
 
-        plt.plot(
-            self.fom.time_points[1:],
-            self.fom.functional_values,
-            label="FOM",
-        )
-        plt.plot(
-            self.fom.time_points[1:],
-            self.functional_values,
-            label="ROM", linestyle="--",
-        )
-        plt.xlabel("time")
-        plt.ylabel("cost functional")
-        plt.legend()
-        plt.grid()
-        if self.PLOTTING:
-            plt.show()
-        else:
-            name=f"images/tol={self.REL_ERROR_TOL}_parent_slab={self.parent_slabs[0]['steps']}_functional_over_time.eps"
-            plt.savefig(name, format="eps")
-            plt.clf()
-
-
+            plt.plot(
+                self.fom.time_points[1:],
+                self.fom.functional_values,
+                label="FOM",
+            )
+            plt.plot(
+                self.fom.time_points[1:],
+                self.functional_values,
+                label="ROM", linestyle="--",
+            )
+            plt.xlabel("time")
+            plt.ylabel("cost functional")
+            plt.legend()
+            plt.grid()
+            if self.PLOTTING:
+                plt.show()
+            else:
+                name=f"images/tol={self.REL_ERROR_TOL}_parent_slab={self.parent_slabs[0]['steps']}_goal_{self.fom.goal}_functional_over_time.eps"
+                plt.savefig(name, format="eps")
+                plt.clf()
 
 
     def iPOD(self, snapshot, type, quantity):
@@ -665,10 +673,11 @@ class iROM:
 
 
         if matrix_type == "dual":
-            # dual rhs
-            self.vector["dual"]["pressure_down"] = self.reduce_vector(
-                self.fom.vector["primal"]["pressure_down"], "dual", "pressure"
-            )
+            if self.fom.goal == "mean":
+                # dual rhs
+                self.vector["dual"]["pressure_down"] = self.reduce_vector(
+                    self.fom.vector["primal"]["pressure_down"], "dual", "pressure"
+                )
 
             # * dual sub system matrices
             matrix_stress_dual = self.reduce_matrix(
@@ -854,6 +863,12 @@ class iROM:
             (self.POD["dual"]["pressure"]["basis"].shape[1], self.fom.dofs["time"])
         )
 
+        if self.fom.goal == "endtime":
+            # project down the dual terminal condition
+            self.vector["dual"]["pressure_down"] = self.reduce_vector(
+                self.fom.Y["dual"]["pressure"][:, -1], "dual", "pressure"
+            )
+
         dual_solution = np.concatenate(
             (
                 self.solution["dual"]["displacement"][:, -1],
@@ -866,9 +881,10 @@ class iROM:
             # print(f"i = {i}, t = {t:.4f}")
             # LES: A^T * U = dt * J + B^T * U^{n+1}
             dual_rhs = self.matrix["dual"]["rhs_matrix"].dot(dual_solution)
-            dual_rhs[self.POD["dual"]["displacement"]["basis"].shape[1] :] += (
-                self.fom.dt * self.vector["dual"]["pressure_down"]
-            )
+            if self.fom.goal == "mean":
+                dual_rhs[self.POD["dual"]["displacement"]["basis"].shape[1] :] += (
+                    self.fom.dt * self.vector["dual"]["pressure_down"]
+                )
             dual_solution = scipy.linalg.lu_solve((self.lu_dual, self.piv_dual), dual_rhs)
             # dual_solution = np.linalg.solve(self.matrix["dual"]["system_matrix"], dual_rhs)
 
@@ -914,6 +930,8 @@ class iROM:
         self.errors = np.zeros((self.fom.dofs["time"] - 1,))
         self.relative_errors = np.zeros((self.fom.dofs["time"] - 1,))
         self.functional_values = np.zeros((self.fom.dofs["time"] - 1,))
+        if self.fom.goal == "endtime":
+            self.functional_values = None
 
         for i in range(1, self.fom.dofs["time"]):
             # print("Estimating error for time step: ", i)
@@ -954,16 +972,27 @@ class iROM:
 
             self.errors[i - 1] = np.dot(dual_sol, primal_res)
 
-            self.functional_values[i - 1] = self.vector["primal"]["pressure_down"].dot(
-                self.solution["primal"]["pressure"][:, i]
-            ) * self.fom.dt
+            if self.fom.goal == "mean":
+                self.functional_values[i - 1] = self.vector["primal"]["pressure_down"].dot(
+                    self.solution["primal"]["pressure"][:, i]
+                ) * self.fom.dt
 
-            if np.abs(self.errors[i-1] + self.functional_values[i-1]) < 1e-12:
-                self.relative_errors[i - 1] = self.errors[i - 1] / 1e-12
-            else:
-                self.relative_errors[i - 1] = self.errors[i - 1] / (
-                    self.errors[i - 1] + self.functional_values[i - 1]
-                )
+                # if np.abs(self.errors[i-1] + self.functional_values[i-1]) < 1e-12:
+                #     self.relative_errors[i - 1] = self.errors[i - 1] / 1e-12
+                # else:
+                #     self.relative_errors[i - 1] = self.errors[i - 1] / (
+                #         self.errors[i - 1] + self.functional_values[i - 1]
+                #     )
+
+        if self.fom.goal == "mean":
+            self.functional = np.sum(self.functional_values)
+        elif self.fom.goal == "endtime":
+            self.functional = self.solution["primal"]["pressure"][:, -1].dot(
+                self.vector["primal"]["pressure_down"]
+            )
+
+        self.relative_errors = self.errors / (self.functional + 1e-16)
+            
 
     def solve_primal_time_step_slab(self, old_solution):
         return scipy.linalg.lu_solve((self.lu_primal, self.piv_primal),
@@ -978,10 +1007,11 @@ class iROM:
 
     def solve_dual_time_step_slab(self, old_solution):
         dual_rhs = self.matrix["dual"]["rhs_matrix"].dot(old_solution)
-        dual_rhs[self.POD["dual"]["displacement"]["basis"].shape[1] :] += (
-            self.fom.dt * self.vector["dual"]["pressure_down"]
-        )
-        # solve with lu deccomposition 
+        if self.fom.goal == "mean":
+            dual_rhs[self.POD["dual"]["displacement"]["basis"].shape[1] :] += (
+                self.fom.dt * self.vector["dual"]["pressure_down"]
+            )
+        # solve with lu decomposition 
         return scipy.linalg.lu_solve((self.lu_dual, self.piv_dual), dual_rhs)
 
         # return np.linalg.solve(self.matrix["dual"]["system_matrix"], dual_rhs)
@@ -1035,6 +1065,11 @@ class iROM:
         )
         # zero initial condition for dual
         old_solution = np.zeros((self.POD["dual"]["displacement"]["basis"].shape[1] + self.POD["dual"]["pressure"]["basis"].shape[1],))
+        if self.fom.goal == "endtime":
+            # project down the dual terminal condition
+            old_solution[self.POD["dual"]["displacement"]["basis"].shape[1]:] += self.reduce_vector(
+                self.fom.Y["dual"]["pressure"][:, -1], "dual", "pressure"
+            )
 
         for i in reversed(
             range(

@@ -17,13 +17,15 @@ from tqdm import tqdm
 
 class FOM:
     # constructor
-    def __init__(self, t, T, dt, problem, quantities=["displacement", "pressure"]):
+    def __init__(self, t, T, dt, problem, quantities=["displacement", "pressure"], goal="mean"):
         self.t = t
         self.T = T
         self.dt = dt
         self.problem = problem
         # ORDERING IS IMPORTANT FOR ROM!
         self.quantities = quantities
+        assert goal in ["mean", "endtime"], "goal must be either 'mean' or 'endtime'"
+        self.goal = goal
 
         # for each variable of the object problem, add this variable to the FOM
         for key, value in problem.__dict__.items():
@@ -228,13 +230,15 @@ class FOM:
                 self.matrix["primal"]["system_matrix"].transpose().copy()
             )
 
-            self.matrix["dual"]["rhs_matrix"] = scipy.sparse.csr_matrix(
-                as_backend_type(assemble(p * phi_p * self.ds_down)).mat().getValuesCSR()[::-1],
-                shape=(
-                    self.dofs["displacement"] + self.dofs["pressure"],
-                    self.dofs["displacement"] + self.dofs["pressure"],
-                ),
-            )
+            # NOTE: only use this for mean goal functional
+            if self.goal == "mean":
+                self.matrix["dual"]["rhs_matrix"] = scipy.sparse.csr_matrix(
+                    as_backend_type(assemble(p * phi_p * self.ds_down)).mat().getValuesCSR()[::-1],
+                    shape=(
+                        self.dofs["displacement"] + self.dofs["pressure"],
+                        self.dofs["displacement"] + self.dofs["pressure"],
+                    ),
+                )
 
             # apply BC
             self.boundary_dof_vector = np.zeros(
@@ -342,8 +346,8 @@ class FOM:
         self.SAVE_DIR = "results/"
 
     def save_solution(self, solution_type="primal"):
-        pattern = r"solution_" + solution_type + "_" + r"\d{6}\.npz"
-        files = os.listdir(os.path.abspath(self.SAVE_DIR))
+        pattern = r"solution_" + solution_type + "_goal_" + self.goal + r"\d{6}\.npz"
+        files = os.listdir(self.SAVE_DIR)
         files = [
             self.SAVE_DIR + f
             for f in files
@@ -372,7 +376,7 @@ class FOM:
                 print(f"Overwrite {file}")
                 return
 
-        file_name = "results/solution_" + solution_type + "_" + str(len(files)).zfill(6) + ".npz"
+        file_name = "results/solution_" + solution_type + "_goal_" + self.goal + str(len(files)).zfill(6) + ".npz"
         np.savez(
             file_name,
             displacement=self.Y[solution_type]["displacement"],
@@ -383,7 +387,7 @@ class FOM:
         print(f"Saved as {file_name}")
 
     def load_solution(self, solution_type="primal"):
-        pattern = r"solution_" + solution_type + "_" + r"\d{6}\.npz"
+        pattern = r"solution_" + solution_type + "_goal_" + self.goal + r"\d{6}\.npz"
 
         # check if self.SAVE_DIR exists
         if not os.path.exists(self.SAVE_DIR):
@@ -416,14 +420,20 @@ class FOM:
         return False
 
     def solve_functional_trajectory(self):
-        self.functional_values = np.zeros((self.dofs["time"] - 1,))
-        for i in range(self.dofs["time"] - 1):
-            self.functional_values[i] = (
-                self.vector["primal"]["pressure_down"].dot(self.Y["primal"]["pressure"][:, i + 1])
-                * self.dt
+        if self.goal == "mean":
+            self.functional_values = np.zeros((self.dofs["time"] - 1,))
+            for i in range(self.dofs["time"] - 1):
+                self.functional_values[i] = (
+                    self.vector["primal"]["pressure_down"].dot(self.Y["primal"]["pressure"][:, i + 1])
+                    * self.dt
+                )
+            self.functional = np.sum(self.functional_values)
+        elif self.goal == "endtime":
+            self.functional_values = None
+            self.functional = (
+                self.vector["primal"]["pressure_down"].dot(self.Y["primal"]["pressure"][:, -1])
             )
-
-        self.functional = np.sum(self.functional_values)
+        
         # print cost functional in scientific notation
         # print(f"Cost functional: {self.functional:.4e}")
 
@@ -523,7 +533,8 @@ class FOM:
         dual_rhs = self.matrix["primal"]["rhs_matrix"].transpose().dot(old_dual_solution)
 
         # derivative of CF on rhs
-        dual_rhs[self.dofs["displacement"] :] += self.dt * self.vector["primal"]["pressure_down"]
+        if self.goal == "mean":
+            dual_rhs[self.dofs["displacement"] :] += self.dt * self.vector["primal"]["pressure_down"]
 
         # apply homogeneous Dirichlet BC to right hand side
         dual_rhs *= 1.0 - self.boundary_dof_vector
@@ -567,6 +578,10 @@ class FOM:
         self.Y["dual"]["displacement"][:, -1] = np.zeros((self.dofs["displacement"],))
         self.Y["dual"]["pressure"][:, -1] = np.zeros((self.dofs["pressure"],))
 
+        if self.goal == "endtime":
+            for i, dof in enumerate(self.bottom_dofs_p):
+                self.Y["dual"]["pressure"][:, -1][i] = 1.0
+
         # print(np.linalg.norm(self.Y["dual"]["displacement"][:, -1]))
         # print(np.linalg.norm(self.Y["dual"]["pressure"][:, -1]))
 
@@ -600,10 +615,10 @@ class FOM:
 
         self.save_solution(solution_type="dual")
 
-        # self.save_vtk(type="dual")
+        self.save_vtk(type="dual")
 
     def save_vtk(self, type="primal"):
-        folder = f"paraview/{self.dt}_{self.T}_{self.problem_name}/FOM"
+        folder = f"paraview/{self.dt}_{self.T}_{self.problem_name}_{self.goal}/FOM"
         # check if folder exists else create it
         if not os.path.exists(folder):
             os.makedirs(folder)
