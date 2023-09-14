@@ -71,7 +71,7 @@ TOTAL_ENERGY = {
 }
 
 # ----------- FOM -----------
-fom = FOM(t, T, dt, Mandel(), goal="endtime")
+fom = FOM(t, T, dt, Mandel(), goal="mean")
 start_time_fom = time.time()
 fom.solve_primal(force_recompute=False)
 end_time_fom = time.time()
@@ -122,16 +122,21 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
     J_h_t = fom.functional_values
     J_r_t = rom.functional_values
 
+    J_h = fom.functional
+    J_r = rom.functional
+
     temporal_interval_error = rom.errors
 
-    true_error = np.abs(np.sum(J_h_t-J_r_t))
-    true_abs_error = np.sum(np.abs(J_h_t-J_r_t))
+    true_error = np.abs(J_h - J_r) #np.abs(np.sum(J_h_t-J_r_t))
+    true_abs_error = None
+    if fom.goal == "mean":
+        true_abs_error = np.sum(np.abs(J_h_t-J_r_t))
     estimated_error = np.abs(np.sum(temporal_interval_error))
     estimated_abs_error = np.sum(np.abs(temporal_interval_error))
     effectivity = true_error/estimated_error
 
     # relative error
-    result_matrix[i, 0] = 100* np.abs(np.sum(J_h_t) - np.sum(J_r_t))/np.abs(np.sum(J_h_t))
+    result_matrix[i, 0] = 100*np.abs(J_h - J_r) / np.abs(J_h) #100* np.abs(np.sum(J_h_t) - np.sum(J_r_t))/np.abs(np.sum(J_h_t))
     # speedup
     result_matrix[i, 1] = time_FOM/time_iROM
     # fom solves
@@ -140,12 +145,11 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
     result_matrix[i, 3] = str(rom.POD["primal"]["displacement"]["basis"].shape[1]) + " / " + str(rom.POD["primal"]["pressure"]["basis"].shape[1]) + " + " + str(rom.POD["dual"]["displacement"]["basis"].shape[1]) + " / " + str(rom.POD["dual"]["pressure"]["basis"].shape[1])
     # effectivity index
     result_matrix[i, 4] = effectivity
-    # indicator index
-    result_matrix[i, 5] = true_abs_error/estimated_abs_error
+    if fom.goal == "mean":
+        # indicator index
+        result_matrix[i, 5] = true_abs_error/estimated_abs_error
 
     rom.plots_for_paper()
-
-    quit()
 
 
 header_legend= ["relative error [%]", "speedup", "FOM solves", "size ROM", "effectivity", "indicator"]

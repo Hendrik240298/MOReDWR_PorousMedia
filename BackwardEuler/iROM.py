@@ -352,8 +352,9 @@ class iROM:
         # Error over iterations
         # ---------------------------------
 
-        fom_cf = np.sum(self.fom.functional_values)
+        fom_cf = self.fom.functional #np.sum(self.fom.functional_values)
 
+        print(self.iterations_infos)
         error_cf = np.abs(fom_cf - np.array(self.iterations_infos[0]["functional"]))/np.abs(fom_cf)
         plt.semilogy(
             100*np.array(self.iterations_infos[0]["error"]),
@@ -578,7 +579,7 @@ class iROM:
         print("PRESSURE primal POD size:   ", self.POD["primal"]["pressure"]["basis"].shape[1])
 
         # dual POD brought to you by iPOD
-        for i, t in enumerate(time_points[:1]):
+        for i, t in enumerate(time_points[:1]): #[:-2]): #[:1]):
             for quantity in self.fom.quantities:
                 self.iPOD(self.fom.Y["dual"][quantity][:, i+1], type="dual", quantity=quantity)
 
@@ -991,7 +992,7 @@ class iROM:
                 self.vector["primal"]["pressure_down"]
             )
 
-        self.relative_errors = self.errors / (self.functional + 1e-16)
+        self.relative_errors = self.errors / (self.errors + self.functional + 1e-20)
             
 
     def solve_primal_time_step_slab(self, old_solution):
@@ -1097,6 +1098,8 @@ class iROM:
         self.parent_slabs[index_parent_slab]["functional"] = np.zeros(
             (self.parent_slabs[index_parent_slab]["steps"],)
         )
+        if self.fom.goal == "endtime":
+            self.parent_slabs[index_parent_slab]["functional"] = None
 
         for i in range(self.parent_slabs[index_parent_slab]["steps"]):
             # print("Estimating error for time step: ", i)
@@ -1132,21 +1135,30 @@ class iROM:
 
             errors[i] = np.dot(dual_sol, primal_res)
 
-            self.parent_slabs[index_parent_slab]["functional"][i] = self.vector["primal"]["pressure_down"].dot(
-                self.parent_slabs[index_parent_slab]["solution"]["primal"]["pressure"][:, i]
-            ) * self.fom.dt
+            if self.fom.goal == "mean":
+                self.parent_slabs[index_parent_slab]["functional"][i] = self.vector["primal"]["pressure_down"].dot(
+                    self.parent_slabs[index_parent_slab]["solution"]["primal"]["pressure"][:, i]
+                ) * self.fom.dt
 
-            # check if dividing by zero
-            if np.abs(errors[i] + self.parent_slabs[index_parent_slab]["functional"][i]) < 1e-12:
-                relative_errors[i] = errors[i] / 1e-12
-            else:
-                relative_errors[i] = errors[i] / (
-                    errors[i] +
-                    self.parent_slabs[index_parent_slab]["functional"][i]
-                )    
+                # # check if dividing by zero
+                # if np.abs(errors[i] + self.parent_slabs[index_parent_slab]["functional"][i]) < 1e-12:
+                #     relative_errors[i] = errors[i] / 1e-12
+                # else:
+                #     relative_errors[i] = errors[i] / (
+                #         errors[i] +
+                #         self.parent_slabs[index_parent_slab]["functional"][i]
+                #     )    
 
-            # total relative error on entire parent slab
-            slab_relative_error = np.abs(np.sum(errors) / np.sum(errors + self.parent_slabs[index_parent_slab]["functional"]))
+        if self.fom.goal == "mean":
+            self.parent_slabs[index_parent_slab]["functional_total"] = np.sum(self.parent_slabs[index_parent_slab]["functional"])
+        elif self.fom.goal == "endtime":
+            self.parent_slabs[index_parent_slab]["functional_total"] = self.parent_slabs[index_parent_slab]["solution"]["primal"]["pressure"][:, -1].dot(
+                self.vector["primal"]["pressure_down"]
+            )
+
+        # total relative error on entire parent slab
+        slab_relative_error = np.abs(np.sum(errors) / (np.sum(errors) + self.parent_slabs[index_parent_slab]["functional_total"]))
+        relative_errors = errors / (errors + self.parent_slabs[index_parent_slab]["functional_total"] + 1e-20)
 
         # # ORIGINAL
         i_max = np.argmax(np.abs(relative_errors))
@@ -1324,7 +1336,7 @@ class iROM:
                     self.iterations_infos[index_ps]["POD_size"]["primal"]["pressure"].append(self.POD["primal"]["pressure"]["basis"].shape[1])
                     self.iterations_infos[index_ps]["POD_size"]["dual"]["displacement"].append(self.POD["dual"]["displacement"]["basis"].shape[1])
                     self.iterations_infos[index_ps]["POD_size"]["dual"]["pressure"].append(self.POD["dual"]["pressure"]["basis"].shape[1])
-                    self.iterations_infos[index_ps]["functional"].append(np.sum(self.parent_slabs[index_ps]["functional"]))
+                    self.iterations_infos[index_ps]["functional"].append(self.parent_slabs[index_ps]["functional_total"]) #np.sum(self.parent_slabs[index_ps]["functional"]))
 
                 if self.PLOTTING:
                     print(f"Termination variable: {estimate['slab_relative_error']:.5}")
@@ -1380,7 +1392,7 @@ class iROM:
         #print(f"Total FOM solves: {self.fom_solves}")
 
     def save_vtk(self):
-        folder = f"paraview/{self.fom.dt}_{self.fom.T}_{self.fom.problem_name}/ROM"
+        folder = f"paraview/{self.fom.dt}_{self.fom.T}_{self.fom.problem_name}_goal_{self.fom.goal}/ROM"
 
         if not os.path.exists(folder):
             os.makedirs(folder)
