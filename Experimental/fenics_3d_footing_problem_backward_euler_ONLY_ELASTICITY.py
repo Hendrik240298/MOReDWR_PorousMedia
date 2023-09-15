@@ -21,7 +21,6 @@ lame_coefficient_mu = 1.0e+8
 lame_coefficient_lambda = (2. * poisson_ratio_nu * lame_coefficient_mu) / (1.0 - 2. * poisson_ratio_nu)
 print(f"λ = {lame_coefficient_mu}, μ = {lame_coefficient_lambda}")
 
-
 set_log_active(False) # turn off FEniCS logging
 
 mesh = BoxMesh(Point(-32.,-32.,0.), Point(32.,32.,64.), 8, 8, 8)
@@ -45,11 +44,19 @@ dirichlet.mark(facet_marker, 2)
 # save facet marker to file
 File("facet_marker.pvd") << facet_marker
 
-ds_compression = Measure("ds", subdomain_data=facet_marker, subdomain_id=1)
-ds_neumann = Measure("ds", subdomain_data=facet_marker, subdomain_id=3)
+# ds_compression = Measure("ds", subdomain_data=facet_marker, subdomain_id=1)
+# ds_neumann = Measure("ds", subdomain_data=facet_marker, subdomain_id=3)
 
 bc_down = DirichletBC(V, Constant((0.,0.,0.)), dirichlet) # dirichlet: u = 0
 bcs = [bc_down]
+
+def compression_boundary(x, on_boundary):
+    return on_boundary and x[2] > 64. - 1e-14 and (np.abs(x[0]) <= 16. and np.abs(x[1]) <= 16.)
+
+bc_compression = DirichletBC(V, Constant((0, 0, -1.e7)), compression_boundary)
+
+f = Function(V) 
+bc_compression.apply(f.vector())
 
 # variational problem
 U = TrialFunction(V)
@@ -61,7 +68,7 @@ def stress(u):
 
 n = FacetNormal(mesh)
 A_u = inner(stress(U), grad(Phi))*dx 
-L = inner(Constant((traction_x_biot, traction_y_biot, traction_z_biot)), Phi)*ds_compression
+L = dot(f, Phi)*dx    #inner(Constant((traction_x_biot, traction_y_biot, traction_z_biot)), Phi)*ds_compression
 
 Uh = Function(V) # Uh = U_{n+1}: current solution
 

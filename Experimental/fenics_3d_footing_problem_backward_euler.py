@@ -1,6 +1,5 @@
 import dolfin
 import os
-from ufl import replace
 
 ##############
 # PARAMETERS #
@@ -10,7 +9,7 @@ M_biot = 2.5e+12 #1.75e+7 #2.5e+12
 c_biot = 1.0 / M_biot
 
 # alpha_biot = b_biot = Biot's modulo
-alpha_biot = 1.0 #0.0 #1.0 # TODO: change back to 1.
+alpha_biot = 0.0 #1.0 # TODO: change back to 1.
 viscosity_biot = 1.0e-3
 K_biot = 1.0e-13 #1.0e-6
 
@@ -58,10 +57,6 @@ compression = CompiledSubDomain("near(x[2], 64.) && x[0] >= -16. && x[0] <= 16. 
 dirichlet = CompiledSubDomain("near(x[2], 0.) && on_boundary")
 neumann = CompiledSubDomain("( near(x[0], -32.) || near(x[0], 32.) || near(x[1], -32.) || near(x[1], 32.) || (near(x[2], 64.) && (x[0] <= -16. || x[0] >= 16. || x[1] <= -16. || x[1] >= 16.) ) ) && on_boundary")
 
-# compression = CompiledSubDomain("near(x[2], 64.) && x[0] >= 0. && x[0] <= 32. && x[1] >= 0. && x[1] <= 32. && on_boundary")
-# dirichlet = CompiledSubDomain("(near(x[1], -32.) || near(x[1], 32.) ||  near(x[2], 0.))  && on_boundary")
-# neumann = CompiledSubDomain("( near(x[0], -32.) || near(x[0], 32.) || (near(x[2], 64.) && (x[0] <= 0. || x[1] <= 0.) ) ) && on_boundary")
-
 facet_marker = MeshFunction("size_t", mesh, 1)
 facet_marker.set_all(0)
 neumann.mark(facet_marker, 3)
@@ -79,6 +74,14 @@ bc_down_y = DirichletBC(V.sub(0).sub(1), Constant(0.), dirichlet) # dirichlet: u
 bc_down_z = DirichletBC(V.sub(0).sub(2), Constant(0.), dirichlet) # dirichlet: u_z = 0
 bc_compression_p = DirichletBC(V.sub(1), Constant(0.), dirichlet) # dirichlet: p = 0
 bcs = [bc_down_x, bc_down_y, bc_down_z, bc_compression_p]
+
+def compression_boundary(x, on_boundary):
+    return on_boundary and x[2] > 64. - 1e-14 and (np.abs(x[0]) <= 16. and np.abs(x[1]) <= 16.)
+
+bc_compression = DirichletBC(V, Constant((0, 0, 1, 0)), compression_boundary)
+
+f = Function(V) 
+bc_compression.apply(f.vector())
 
 # zero initial condition for u and p
 U_0 = Constant((0.,)*(dim+1))
@@ -99,11 +102,11 @@ def stress(u):
     return lame_coefficient_lambda*div(u)*Identity(dim) + lame_coefficient_mu*(grad(u) + grad(u).T)
 
 n = FacetNormal(mesh)
-A_u = inner(stress(u), grad(phi_u))*dx - Constant(alpha_biot)*inner(p*Identity(dim), grad(phi_u))*dx + alpha_biot*inner(p*n, phi_u)*ds_compression
+A_u = inner(stress(u), grad(phi_u))*dx - Constant(alpha_biot)*inner(p*Identity(dim), grad(phi_u))*dx + Constant(alpha_biot)*inner(f[2]*p*Constant((0.,0.,1.)), phi_u)*dx   #ds_compression
  # + alpha_biot*inner(p*n, phi_u)*ds_neumann
 A_p = Constant(alpha_biot)*div(u)*phi_p*dx + k*(K_biot/viscosity_biot)*inner(grad(p), grad(phi_p))*dx + c_biot*p*phi_p*dx
-L = inner(Constant((traction_x_biot, traction_y_biot, traction_z_biot)), phi_u)*ds_compression + Constant(alpha_biot)*div(u_n)*phi_p*dx + c_biot*p_n*phi_p*dx
-# Constant(traction_z_biot)*phi_u[2]*ds_compression
+L = Constant(-1.e7)*inner(f, Phi)*dx + Constant(alpha_biot)*div(u_n)*phi_p*dx + c_biot*p_n*phi_p*dx
+# inner(Constant((traction_x_biot, traction_y_biot, traction_z_biot)), phi_u)*ds_compression
 
 # Time-stepping
 Uh = Function(V) # Uh = U_{n+1}: current solution
@@ -137,19 +140,18 @@ while(t+k <= T+1e-4):
 
     _u, _p = Uh.split()
 
-    print("Residual:", np.linalg.norm(np.array(assemble(
-        inner(stress(_u), grad(phi_u))*dx - Constant(alpha_biot)*inner(_p*Identity(dim), grad(phi_u))*dx \
-        + Constant(alpha_biot)*div(_u)*phi_p*dx + k*(K_biot/viscosity_biot)*inner(grad(_p), grad(phi_p))*dx + c_biot*_p*phi_p*dx \
-        - inner(Constant((traction_x_biot, traction_y_biot, traction_z_biot)), phi_u)*ds_compression - Constant(alpha_biot)*div(u_n)*phi_p*dx - c_biot*p_n*phi_p*dx
-    ))))
+    # print("Residual:", np.linalg.norm(np.array(assemble(
+    #     inner(stress(_u), grad(phi_u))*dx - Constant(alpha_biot)*inner(_p*Identity(dim), grad(phi_u))*dx \
+    #     + Constant(alpha_biot)*div(_u)*phi_p*dx + k*(K_biot/viscosity_biot)*inner(grad(_p), grad(phi_p))*dx + c_biot*_p*phi_p*dx \
+    #     - inner(Constant((traction_x_biot, traction_y_biot, traction_z_biot)), phi_u)*ds_compression - Constant(alpha_biot)*div(u_n)*phi_p*dx - c_biot*p_n*phi_p*dx
+    # ))))
 
-    print("Residual 2: ", norm(assemble(A_u) * Uh.vector() + assemble(A_p) * Uh.vector() - assemble(L)))
+    # print("Residual 2: ", norm(assemble(A_u) * Uh.vector() + assemble(A_p) * Uh.vector() - assemble(L)))
 
-    residual = assemble(A_u) * Uh.vector() + assemble(A_p) * Uh.vector() - assemble(L)
-    for bc in bcs:
-        bc.apply(residual)
-    print("Residual 3: ", norm(residual))
-        #-A_u.replace({u: _u, p: _p})-A_p.replace({u: _u, p: _p})+L))))
+    # residual = assemble(A_u) * Uh.vector() + assemble(A_p) * Uh.vector() - assemble(L)
+    # for bc in bcs:
+    #     bc.apply(residual)
+    # print("Residual 3: ", norm(residual))
     _u.rename("displacement", "solution")
     _p.rename("pressure", "solution")
     vtk_displacement.write(_u)
