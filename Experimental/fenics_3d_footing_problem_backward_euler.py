@@ -9,7 +9,7 @@ M_biot = 2.5e+12 #1.75e+7 #2.5e+12
 c_biot = 1.0 / M_biot
 
 # alpha_biot = b_biot = Biot's modulo
-alpha_biot = 0.0 #1.0 # TODO: change back to 1.
+alpha_biot = 1.0
 viscosity_biot = 1.0e-3
 K_biot = 1.0e-13 #1.0e-6
 
