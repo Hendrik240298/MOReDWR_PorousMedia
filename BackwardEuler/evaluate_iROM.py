@@ -44,6 +44,30 @@ class Mandel:
         1.0 - 2.0 * poisson_ratio_nu
     )
 
+@dataclass
+class Footing:
+    # M_biot = Biot's constant
+    M_biot: float = 1.75e7  # 2.5e+12
+    c_biot: float = 1.0 / M_biot
+
+    # alpha_biot = b_biot = Biot's modulo
+    alpha_biot: float = 1.0
+    viscosity_biot: float = 1.0e-3
+    K_biot: float = 1.0e-13
+    density_biot: float = 1.0
+
+    # Traction
+    traction_x_biot: float = 0.0
+    traction_y_biot: float = 0.0
+    traction_z_biot: float = -1.0e7
+
+    # Solid parameters
+    density_structure: float = 1.0
+    lame_coefficient_mu: float = 1.0e8
+    poisson_ratio_nu: float = 0.2
+    lame_coefficient_lambda: float = (2.0 * poisson_ratio_nu * lame_coefficient_mu) / (
+        1.0 - 2.0 * poisson_ratio_nu
+    )
 
 # start time
 t = 0.0
@@ -71,7 +95,8 @@ TOTAL_ENERGY = {
 }
 
 # ----------- FOM -----------
-fom = FOM(t, T, dt, Mandel(), goal="mean")
+#fom = FOM(t, T, dt, Mandel(), goal="mean")
+fom = FOM(t, T, dt, Footing(), goal="point")
 start_time_fom = time.time()
 fom.solve_primal(force_recompute=False)
 end_time_fom = time.time()

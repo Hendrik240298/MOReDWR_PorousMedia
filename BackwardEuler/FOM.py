@@ -24,7 +24,10 @@ class FOM:
         self.problem = problem
         # ORDERING IS IMPORTANT FOR ROM!
         self.quantities = quantities
-        assert goal in ["mean", "endtime"], "goal must be either 'mean' or 'endtime'"
+        if problem.__class__.__name__ == "Mandel":
+            assert goal in ["mean", "endtime"], "goal must be either 'mean' or 'endtime' for Mandel problem"
+        elif problem.__class__.__name__ == "Footing":
+            assert goal in ["point"], "goal must be 'point' for Footing problem"
         self.goal = goal
 
         # for each variable of the object problem, add this variable to the FOM
@@ -53,8 +56,11 @@ class FOM:
             # plt.title("Mesh")
             # plot(self.mesh)
             # plt.show()
+        elif self.problem_name == "Footing":
+            self.mesh = BoxMesh(Point(-32.,-32.,0.), Point(32.,32.,64.), 8, 8, 8) #24, 24, 24)
+            self.dim = self.mesh.geometry().dim()
         else:
-            raise NotImplementedError("Only Mandel problem implemented so far.")
+            raise NotImplementedError("Only Mandel and Footing problem implemented so far.")
 
         element = {
             "u": VectorElement("Lagrange", self.mesh.ufl_cell(), 2),
@@ -91,6 +97,34 @@ class FOM:
             bc_right = DirichletBC(self.V.sub(1), Constant(0.0), right)  # right:  p = 0
             bc_down = DirichletBC(self.V.sub(0).sub(1), Constant(0.0), down)  # down: u_y = 0
             self.bc = [bc_left, bc_right, bc_down]
+        elif self.problem_name == "Footing":
+            compression = CompiledSubDomain("near(x[2], 64.) && x[0] >= -16. && x[0] <= 16. && x[1] >= -16. && x[1] <= 16. && on_boundary")
+            dirichlet = CompiledSubDomain("near(x[2], 0.) && on_boundary")
+            neumann = CompiledSubDomain("( near(x[0], -32.) || near(x[0], 32.) || near(x[1], -32.) || near(x[1], 32.) || (near(x[2], 64.) && (x[0] <= -16. || x[0] >= 16. || x[1] <= -16. || x[1] >= 16.) ) ) && on_boundary")
+
+            facet_marker = MeshFunction("size_t", self.mesh, 1)
+            facet_marker.set_all(0)
+            neumann.mark(facet_marker, 3)
+            compression.mark(facet_marker, 1)
+            dirichlet.mark(facet_marker, 2)
+
+            self.ds_compression = Measure("ds", subdomain_data=facet_marker, subdomain_id=1)
+            self.ds_neumann = Measure("ds", subdomain_data=facet_marker, subdomain_id=3)
+
+            bc_down_x = DirichletBC(self.V.sub(0).sub(0), Constant(0.), dirichlet) # dirichlet: u_x = 0
+            bc_down_y = DirichletBC(self.V.sub(0).sub(1), Constant(0.), dirichlet) # dirichlet: u_y = 0
+            bc_down_z = DirichletBC(self.V.sub(0).sub(2), Constant(0.), dirichlet) # dirichlet: u_z = 0
+            bc_compression_p = DirichletBC(self.V.sub(1), Constant(0.), dirichlet) # dirichlet: p = 0
+            self.bc = [bc_down_x, bc_down_y, bc_down_z, bc_compression_p]
+
+            # for \Gamma_{compression} integral workaround: create FE vector which is 1 on \Gamma_{compression} and 0 else
+            def compression_boundary(x, on_boundary):
+                return on_boundary and x[2] > 64. - 1e-14 and (np.abs(x[0]) <= 16. and np.abs(x[1]) <= 16.)
+
+            bc_compression = DirichletBC(self.V, Constant((0, 0, 1, 0)), compression_boundary)
+
+            self.indicator_compression = Function(self.V) 
+            bc_compression.apply(self.indicator_compression.vector()) 
         else:
             raise NotImplementedError("Only Mandel problem implemented so far.")
 
@@ -324,8 +358,10 @@ class FOM:
 
             # times for plotting solution at bottom boundary
             self.special_times = [1000.0, 5000.0, 10000.0, 100000.0, 500000.0, 5000000.0]
+        elif self.problem_name == "Footing":
+            raise NotImplementedError("Footing problem not implemented so far.")
         else:
-            raise NotImplementedError("Only Mandel problem implemented so far.")
+            raise NotImplementedError("Only Mandel and Footing problem implemented so far.")
 
         # define snapshot matrix
         self.Y = {
