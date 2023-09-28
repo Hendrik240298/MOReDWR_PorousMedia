@@ -359,7 +359,172 @@ class FOM:
             # times for plotting solution at bottom boundary
             self.special_times = [1000.0, 5000.0, 10000.0, 100000.0, 500000.0, 5000000.0]
         elif self.problem_name == "Footing":
-            raise NotImplementedError("Footing problem not implemented so far.")
+            # Stress function
+            def stress(u):
+                return self.lame_coefficient_lambda * div(u) * Identity(
+                    self.dim
+                ) + self.lame_coefficient_mu * (grad(u) + grad(u).T)
+
+            n = FacetNormal(self.mesh)
+
+            self.matrix["primal"]["stress"] = scipy.sparse.csr_matrix(
+                as_backend_type(assemble(inner(stress(u), grad(phi_u)) * dx))
+                .mat()
+                .getValuesCSR()[::-1],
+                shape=(
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                ),
+            )[: self.dofs["displacement"], : self.dofs["displacement"]]
+
+            self.matrix["primal"]["elasto_pressure"] = scipy.sparse.csr_matrix(
+                as_backend_type(
+                    assemble(
+                        -self.alpha_biot * inner(p * Identity(self.dim), grad(phi_u)) * dx
+                        + self.alpha_biot * inner(self.indicator_compression[2]*p*Constant((0.,0.,1.)), phi_u) * dx
+                    )
+                )
+                .mat()
+                .getValuesCSR()[::-1],
+                shape=(
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                ),
+            )[: self.dofs["displacement"], self.dofs["displacement"] :]
+
+            self.matrix["primal"]["laplace"] = scipy.sparse.csr_matrix(
+                as_backend_type(
+                    assemble(
+                        self.dt
+                        * (self.K_biot / self.viscosity_biot)
+                        * inner(grad(p), grad(phi_p))
+                        * dx
+                    )
+                )
+                .mat()
+                .getValuesCSR()[::-1],
+                shape=(
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                ),
+            )[self.dofs["displacement"] :, self.dofs["displacement"] :]
+
+            self.matrix["primal"]["time_pressure"] = scipy.sparse.csr_matrix(
+                as_backend_type(assemble(self.c_biot * p * phi_p * dx)).mat().getValuesCSR()[::-1],
+                shape=(
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                ),
+            )[self.dofs["displacement"] :, self.dofs["displacement"] :]
+
+            self.matrix["primal"]["time_displacement"] = scipy.sparse.csr_matrix(
+                as_backend_type(assemble(self.alpha_biot * div(u) * phi_p * dx))
+                .mat()
+                .getValuesCSR()[::-1],
+                shape=(
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                ),
+            )[self.dofs["displacement"] :, : self.dofs["displacement"]]
+
+            self.vector["primal"]["traction"] = np.array(
+                assemble(Constant(self.traction_z_biot) * inner(self.indicator_compression, Phi) * dx)
+            )[: self.dofs["displacement"]]
+
+            self.vector["primal"]["traction_full_vector"] = np.array(
+                assemble(Constant(self.traction_z_biot) * inner(self.indicator_compression, Phi) * dx)
+            )
+
+            if self.goal == "point":
+                # vector for cost functional
+                compression_midpoint_p = {"DoF (full)": -1, "DoF (p)": -1, "x": 0., "y": 0., "z": 64.}
+                for i, dof in enumerate(
+                    self.V.tabulate_dof_coordinates()[self.dofs["displacement"] : ]
+                ):
+                    if dof[2] == 64.0 and dof[0] == 0.0 and dof[1] == 0.0:
+                        compression_midpoint_p["DoF (full)"] = i + self.dofs["displacement"]
+                        compression_midpoint_p["DoF (p)"] = i
+                self.vector["primal"]["point"] = np.zeros((self.dofs["pressure"],))
+                self.vector["primal"]["point"][compression_midpoint_p["DoF (p)"]] = 1.0
+                self.vector["primal"]["point_full_vector"] = np.zeros((self.dofs["displacement"]+self.dofs["pressure"],))
+                self.vector["primal"]["point_full_vector"][compression_midpoint_p["DoF (full)"]] = 1.0
+
+            # build system matrix
+            self.matrix["primal"]["system_matrix"] = scipy.sparse.csr_matrix(
+                (
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                )
+            )
+
+            self.matrix["primal"]["system_matrix"][
+                : self.dofs["displacement"], : self.dofs["displacement"]
+            ] = self.matrix["primal"]["stress"]
+            self.matrix["primal"]["system_matrix"][
+                : self.dofs["displacement"], self.dofs["displacement"] :
+            ] = self.matrix["primal"]["elasto_pressure"]
+            self.matrix["primal"]["system_matrix"][
+                self.dofs["displacement"] :, self.dofs["displacement"] :
+            ] = self.matrix["primal"]["laplace"]
+            self.matrix["primal"]["system_matrix"][
+                self.dofs["displacement"] :, : self.dofs["displacement"]
+            ] = self.matrix["primal"]["time_displacement"]
+            self.matrix["primal"]["system_matrix"][
+                self.dofs["displacement"] :, self.dofs["displacement"] :
+            ] += self.matrix["primal"]["time_pressure"]
+
+
+            # system matrix wo boundary conditions
+            self.matrix["primal"]["system_matrix_no_bc"] = self.matrix["primal"][
+                "system_matrix"
+            ].copy()
+
+            # dual system matrix as transposed primal system matrix
+            self.matrix["dual"]["system_matrix"] = (
+                self.matrix["primal"]["system_matrix"].transpose().copy()
+            )
+
+            # apply BC
+            self.boundary_dof_vector = np.zeros(
+                (self.dofs["displacement"] + self.dofs["pressure"],)
+            )
+            for _bc in self.bc:
+                for i, val in _bc.get_boundary_values().items():
+                    assert val == 0.0, "Only homogeneous Dirichlet BCs are supported so far."
+                    self.boundary_dof_vector[i] = 1.0
+            # apply homogeneous Dirichlet BC to system matrix
+            self.matrix["primal"]["system_matrix"] = self.matrix["primal"][
+                "system_matrix"
+            ].multiply((1.0 - self.boundary_dof_vector).reshape(-1, 1)) + scipy.sparse.diags(
+                self.boundary_dof_vector
+            )
+
+            # apply homogeneous Dirichlet BC to dual system matrix
+            self.matrix["dual"]["system_matrix"] = self.matrix["dual"]["system_matrix"].multiply(
+                (1.0 - self.boundary_dof_vector).reshape(-1, 1)
+            ) + scipy.sparse.diags(self.boundary_dof_vector)
+
+            self.solve_factorized_primal = scipy.sparse.linalg.factorized(
+                self.matrix["primal"]["system_matrix"].tocsc()
+            )  # NOTE: LU factorization is dense
+
+            self.solve_factorized_dual = scipy.sparse.linalg.factorized(
+                self.matrix["dual"]["system_matrix"].tocsc()
+            )
+
+            # build rhs matrix
+            self.matrix["primal"]["rhs_matrix"] = scipy.sparse.csr_matrix(
+                (
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                    self.dofs["displacement"] + self.dofs["pressure"],
+                )
+            )
+            self.matrix["primal"]["rhs_matrix"][
+                self.dofs["displacement"] :, self.dofs["displacement"] :
+            ] = self.matrix["primal"]["time_pressure"]
+            self.matrix["primal"]["rhs_matrix"][
+                self.dofs["displacement"] :, : self.dofs["displacement"]
+            ] = self.matrix["primal"]["time_displacement"]
         else:
             raise NotImplementedError("Only Mandel and Footing problem implemented so far.")
 
@@ -469,6 +634,14 @@ class FOM:
             self.functional = (
                 self.vector["primal"]["pressure_down"].dot(self.Y["primal"]["pressure"][:, -1])
             )
+        elif self.goal == "point":
+            self.functional_values = np.zeros((self.dofs["time"] - 1,))
+            for i in range(self.dofs["time"] - 1):
+                self.functional_values[i] = (
+                    self.vector["primal"]["point"].dot(self.Y["primal"]["pressure"][:, i + 1])
+                    * self.dt
+                )
+            self.functional = np.sum(self.functional_values)
         
         # print cost functional in scientific notation
         # print(f"Cost functional: {self.functional:.4e}")
@@ -571,6 +744,8 @@ class FOM:
         # derivative of CF on rhs
         if self.goal == "mean":
             dual_rhs[self.dofs["displacement"] :] += self.dt * self.vector["primal"]["pressure_down"]
+        elif self.goal == "point":
+            dual_rhs[self.dofs["displacement"] :] += self.dt * self.vector["primal"]["point"]
 
         # apply homogeneous Dirichlet BC to right hand side
         dual_rhs *= 1.0 - self.boundary_dof_vector

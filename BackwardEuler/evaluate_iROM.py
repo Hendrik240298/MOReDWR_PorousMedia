@@ -72,7 +72,7 @@ class Footing:
 # start time
 t = 0.0
 # end time
-T = 5.0e6
+T = 5.0e5 #5.0e6
 # time step size
 dt = 1000  # 5.e6/20  # 1000.0
 
