@@ -617,9 +617,14 @@ class iROM:
             )
 
             # cost functional rhs
-            self.vector["primal"]["pressure_down"] = self.reduce_vector(
-                self.fom.vector["primal"]["pressure_down"], "primal", "pressure"
-            )
+            if self.fom.problem_name == "Mandel":
+                self.vector["primal"]["pressure_down"] = self.reduce_vector(
+                    self.fom.vector["primal"]["pressure_down"], "primal", "pressure"
+                )
+            elif self.fom.problem_name == "Footing":
+                 self.vector["primal"]["point"] = self.reduce_vector(
+                    self.fom.vector["primal"]["point"], "primal", "pressure"
+                )
 
             # * primal sub system matrices
             matrix_stress = self.reduce_matrix(
@@ -678,6 +683,11 @@ class iROM:
                 # dual rhs
                 self.vector["dual"]["pressure_down"] = self.reduce_vector(
                     self.fom.vector["primal"]["pressure_down"], "dual", "pressure"
+                )
+            elif self.fom.goal == "point":
+                # dual rhs
+                self.vector["dual"]["point"] = self.reduce_vector(
+                    self.fom.vector["primal"]["point"], "dual", "pressure"
                 )
 
             # * dual sub system matrices
@@ -805,11 +815,12 @@ class iROM:
 
 
     def update_matrices_plotting(self):
-        # reduce matrices for evaluation of the solution at the bottom boundary
-        self.bottom_matrix_u = self.fom.bottom_matrix_u.dot(
-            self.POD["primal"]["displacement"]["basis"]
-        )
-        self.bottom_matrix_p = self.fom.bottom_matrix_p.dot(self.POD["primal"]["pressure"]["basis"])
+        if self.fom.problem_name == "Mandel":
+            # reduce matrices for evaluation of the solution at the bottom boundary
+            self.bottom_matrix_u = self.fom.bottom_matrix_u.dot(
+                self.POD["primal"]["displacement"]["basis"]
+            )
+            self.bottom_matrix_p = self.fom.bottom_matrix_p.dot(self.POD["primal"]["pressure"]["basis"])
 
 
     def solve_primal(self):
@@ -885,6 +896,10 @@ class iROM:
             if self.fom.goal == "mean":
                 dual_rhs[self.POD["dual"]["displacement"]["basis"].shape[1] :] += (
                     self.fom.dt * self.vector["dual"]["pressure_down"]
+                )
+            elif self.fom.goal == "point":
+                dual_rhs[self.POD["dual"]["displacement"]["basis"].shape[1] :] += (
+                    self.fom.dt * self.vector["dual"]["point"]
                 )
             dual_solution = scipy.linalg.lu_solve((self.lu_dual, self.piv_dual), dual_rhs)
             # dual_solution = np.linalg.solve(self.matrix["dual"]["system_matrix"], dual_rhs)
@@ -984,6 +999,10 @@ class iROM:
                 #     self.relative_errors[i - 1] = self.errors[i - 1] / (
                 #         self.errors[i - 1] + self.functional_values[i - 1]
                 #     )
+            elif self.fom.goal == "point":
+                self.functional_values[i - 1] = self.vector["primal"]["point"].dot(
+                    self.solution["primal"]["pressure"][:, i]
+                ) * self.fom.dt
 
         if self.fom.goal == "mean":
             self.functional = np.sum(self.functional_values)
@@ -991,6 +1010,8 @@ class iROM:
             self.functional = self.solution["primal"]["pressure"][:, -1].dot(
                 self.vector["primal"]["pressure_down"]
             )
+        elif self.fom.goal == "point":
+            self.functional = np.sum(self.functional_values)
 
         self.relative_errors = self.errors / (self.errors + self.functional + 1e-20)
             
@@ -1012,6 +1033,11 @@ class iROM:
             dual_rhs[self.POD["dual"]["displacement"]["basis"].shape[1] :] += (
                 self.fom.dt * self.vector["dual"]["pressure_down"]
             )
+        elif self.fom.goal == "point":
+            dual_rhs[self.POD["dual"]["displacement"]["basis"].shape[1] :] += (
+                self.fom.dt * self.vector["dual"]["point"]
+            )
+
         # solve with lu decomposition 
         return scipy.linalg.lu_solve((self.lu_dual, self.piv_dual), dual_rhs)
 
@@ -1148,12 +1174,20 @@ class iROM:
                 #         errors[i] +
                 #         self.parent_slabs[index_parent_slab]["functional"][i]
                 #     )    
+            elif self.fom.goal == "point":
+                self.parent_slabs[index_parent_slab]["functional"][i] = self.vector["primal"]["point"].dot(
+                    self.parent_slabs[index_parent_slab]["solution"]["primal"]["pressure"][:, i]
+                ) * self.fom.dt
 
         if self.fom.goal == "mean":
             self.parent_slabs[index_parent_slab]["functional_total"] = np.sum(self.parent_slabs[index_parent_slab]["functional"])
         elif self.fom.goal == "endtime":
             self.parent_slabs[index_parent_slab]["functional_total"] = self.parent_slabs[index_parent_slab]["solution"]["primal"]["pressure"][:, -1].dot(
                 self.vector["primal"]["pressure_down"]
+            )
+        elif self.fom.goal == "point":
+            self.parent_slabs[index_parent_slab]["functional_total"] = self.parent_slabs[index_parent_slab]["solution"]["primal"]["pressure"][:, -1].dot(
+                self.vector["primal"]["point"]
             )
 
         # total relative error on entire parent slab

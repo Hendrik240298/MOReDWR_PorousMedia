@@ -81,7 +81,7 @@ n_timesteps = int(T / dt)
 
 # ----------- ROM parameters -----------
 REL_ERROR_TOL = .1e-2
-MAX_ITERATIONS = 1000
+MAX_ITERATIONS = 20 #1000
 PARENT_SLAB_SIZE = int(n_timesteps/1)
 TOTAL_ENERGY = {
     "primal": {
@@ -136,7 +136,8 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
     # ----------- ROM Error -----------
     rom.compute_error() # used for plotting of error NOT cost functionals
     rom.solve_functional_trajectory()
-    rom.plot_bottom_solution()
+    if fom.problem_name == "Mandel":
+        rom.plot_bottom_solution()
 
     # ----------- Results -----------
     time_FOM = end_time_fom - start_time_fom
