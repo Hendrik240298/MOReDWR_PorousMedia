@@ -437,17 +437,26 @@ class FOM:
 
             if self.goal == "point":
                 # vector for cost functional
-                compression_midpoint_p = {"DoF (full)": -1, "DoF (p)": -1, "x": 0., "y": 0., "z": 64.}
-                for i, dof in enumerate(
-                    self.V.tabulate_dof_coordinates()[self.dofs["displacement"] : ]
-                ):
-                    if dof[2] == 64.0 and dof[0] == 0.0 and dof[1] == 0.0:
-                        compression_midpoint_p["DoF (full)"] = i + self.dofs["displacement"]
-                        compression_midpoint_p["DoF (p)"] = i
-                self.vector["primal"]["point"] = np.zeros((self.dofs["pressure"],))
-                self.vector["primal"]["point"][compression_midpoint_p["DoF (p)"]] = 1.0
-                self.vector["primal"]["point_full_vector"] = np.zeros((self.dofs["displacement"]+self.dofs["pressure"],))
-                self.vector["primal"]["point_full_vector"][compression_midpoint_p["DoF (full)"]] = 1.0
+                # compression_midpoint_p = {"DoF (full)": -1, "DoF (p)": -1, "x": 0., "y": 0., "z": 64.}
+                # for i, dof in enumerate(
+                #     self.V.tabulate_dof_coordinates()[self.dofs["displacement"] : ]
+                # ):
+                #     if dof[2] == 64.0 and dof[0] == 0.0 and dof[1] == 0.0:
+                #         compression_midpoint_p["DoF (full)"] = i + self.dofs["displacement"]
+                #         compression_midpoint_p["DoF (p)"] = i
+                # self.vector["primal"]["point"] = np.zeros((self.dofs["pressure"],))
+                # self.vector["primal"]["point"][compression_midpoint_p["DoF (p)"]] = 1.0
+                # self.vector["primal"]["point_full_vector"] = np.zeros((self.dofs["displacement"]+self.dofs["pressure"],))
+                # self.vector["primal"]["point_full_vector"][compression_midpoint_p["DoF (full)"]] = 1.0
+
+                # QoI: pressure integral over \Gamma_{compression}
+                self.vector["primal"]["point"] = np.array(
+                    assemble(self.indicator_compression[2] * phi_p * dx)
+                )[self.dofs["displacement"] : ]
+                self.vector["primal"]["point_full_vector"] = np.array(
+                    assemble(self.indicator_compression[2] * phi_p * dx)
+                )
+
 
             # build system matrix
             self.matrix["primal"]["system_matrix"] = scipy.sparse.csr_matrix(
@@ -545,6 +554,74 @@ class FOM:
 
         # IO data
         self.SAVE_DIR = "results/"
+
+    def save_time(self, computation_time):
+        pattern = r"time_goal_" + self.goal + r"\d{6}\.npz"
+        files = os.listdir(self.SAVE_DIR)
+        files = [
+            self.SAVE_DIR + f
+            for f in files
+            if os.path.isfile(os.path.join(self.SAVE_DIR, f)) and re.match(pattern, f)
+        ]
+
+        parameters = np.array(
+            [
+                self.dt,
+                self.T,
+                self.problem_name,
+                *[float(x) for x in self.problem.__dict__.values()],
+            ]
+        )
+
+        for file in files:
+            tmp = np.load(file, allow_pickle=True)
+            if np.array_equal(parameters, tmp["parameters"]):
+                np.savez(
+                    file,
+                    time=computation_time,
+                    parameters=parameters,
+                    compression=False,
+                )
+                return
+
+        file_name = "results/time_goal_" + self.goal + str(len(files)).zfill(6) + ".npz"
+        np.savez(
+            file_name,
+            time=computation_time,
+            parameters=parameters,
+            compression=False,
+        )
+
+    def load_time(self):
+        pattern = r"time_goal_" + self.goal + r"\d{6}\.npz"
+
+        # check if self.SAVE_DIR exists
+        if not os.path.exists(self.SAVE_DIR):
+            os.makedirs(self.SAVE_DIR)
+            raise Exception("No time data available.")
+
+        files = os.listdir(self.SAVE_DIR)
+        files = [
+            self.SAVE_DIR + f
+            for f in files
+            if os.path.isfile(os.path.join(self.SAVE_DIR, f)) and re.match(pattern, f)
+        ]
+
+        parameters = np.array(
+            [
+                self.dt,
+                self.T,
+                self.problem_name,
+                *[float(x) for x in self.problem.__dict__.values()],
+            ]
+        )
+
+        for file in files:
+            tmp = np.load(file)
+            if np.array_equal(parameters, tmp["parameters"]):
+                computation_time = tmp["time"]
+                return computation_time
+        raise Exception("No time data available.")
 
     def save_solution(self, solution_type="primal"):
         pattern = r"solution_" + solution_type + "_goal_" + self.goal + r"\d{6}\.npz"
@@ -703,7 +780,7 @@ class FOM:
     def solve_primal(self, force_recompute=False):
         if not force_recompute:
             if self.load_solution(solution_type="primal"):
-                return
+                return False
 
         # zero initial condition
         self.Y["primal"]["displacement"][:, 0] = np.zeros((self.dofs["displacement"],))
@@ -721,6 +798,7 @@ class FOM:
 
         self.save_solution(solution_type="primal")
         # self.save_vtk()
+        return True
 
     def solve_dual_time_step(self, z_u_nn_vector, z_p_nn_vector):
         """

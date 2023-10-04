@@ -26,6 +26,7 @@ class iROM:
         fom,
         REL_ERROR_TOL=1e-2,
         MAX_ITERATIONS=100,
+        MIN_ITERATIONS=5,
         PARENT_SLAB_SIZE=1,
         TOTAL_ENERGY={
             "primal": {"displacement": 1, "pressure": 1},
@@ -35,6 +36,7 @@ class iROM:
         self.fom = fom
         self.REL_ERROR_TOL = REL_ERROR_TOL
         self.MAX_ITERATIONS = MAX_ITERATIONS
+        self.MIN_ITERATIONS = MIN_ITERATIONS
         self.PLOTTING = PLOTTING
 
         self.fom.matrix.update(
@@ -354,7 +356,7 @@ class iROM:
 
         fom_cf = self.fom.functional #np.sum(self.fom.functional_values)
 
-        print(self.iterations_infos)
+        #print("iteration infos:", self.iterations_infos)
         error_cf = np.abs(fom_cf - np.array(self.iterations_infos[0]["functional"]))/np.abs(fom_cf)
         plt.semilogy(
             100*np.array(self.iterations_infos[0]["error"]),
@@ -579,9 +581,9 @@ class iROM:
         print("PRESSURE primal POD size:   ", self.POD["primal"]["pressure"]["basis"].shape[1])
 
         # dual POD brought to you by iPOD
-        for i, t in enumerate(time_points[:1]): #[:-2]): #[:1]):
+        for i, t in list(enumerate(time_points))[-2:-1]: #[:-2]): #[:1]):
             for quantity in self.fom.quantities:
-                self.iPOD(self.fom.Y["dual"][quantity][:, i+1], type="dual", quantity=quantity)
+                self.iPOD(self.fom.Y["dual"][quantity][:, i], type="dual", quantity=quantity)
 
         print("DISPLACEMENT dual POD size:   ", self.POD["dual"]["displacement"]["basis"].shape[1])
         print("PRESSURE dual POD size:   ", self.POD["dual"]["pressure"]["basis"].shape[1])
@@ -1186,11 +1188,12 @@ class iROM:
                 self.vector["primal"]["pressure_down"]
             )
         elif self.fom.goal == "point":
-            self.parent_slabs[index_parent_slab]["functional_total"] = self.parent_slabs[index_parent_slab]["solution"]["primal"]["pressure"][:, -1].dot(
-                self.vector["primal"]["point"]
-            )
-
+            self.parent_slabs[index_parent_slab]["functional_total"] = np.sum(self.parent_slabs[index_parent_slab]["functional"])
+            
         # total relative error on entire parent slab
+        print(f"np.sum(errors) = {np.sum(errors):.4e}")
+        print(f"self.parent_slabs[index_parent_slab][functional_total] = {self.parent_slabs[index_parent_slab]['functional_total']:.4e}")
+        print(f"(np.sum(errors) + self.parent_slabs[index_parent_slab][functional_total]) = {(np.sum(errors) + self.parent_slabs[index_parent_slab]['functional_total']):.4e}")
         slab_relative_error = np.abs(np.sum(errors) / (np.sum(errors) + self.parent_slabs[index_parent_slab]["functional_total"]))
         relative_errors = errors / (errors + self.parent_slabs[index_parent_slab]["functional_total"] + 1e-20)
 
@@ -1208,6 +1211,7 @@ class iROM:
             "i_max_abs": i_max_abs,
             "slab_relative_error": slab_relative_error
         }
+        #print(error)
         self.timings["error_estimate"] += time.time() - execution_time
         return error
 
@@ -1365,6 +1369,7 @@ class iROM:
                 plot_investigation = True
 
                 if plot_investigation:
+                    print(f"Error in iter {iteration}: {estimate['slab_relative_error']:.5}")
                     self.iterations_infos[index_ps]["error"].append(estimate["slab_relative_error"])
                     self.iterations_infos[index_ps]["POD_size"]["primal"]["displacement"].append(self.POD["primal"]["displacement"]["basis"].shape[1])
                     self.iterations_infos[index_ps]["POD_size"]["primal"]["pressure"].append(self.POD["primal"]["pressure"]["basis"].shape[1])
@@ -1378,7 +1383,7 @@ class iROM:
                 # 4. If relative error is too large, then solve primal and dual FOM on
                 # time step with largest error
                 # if estimate["max"] <= self.REL_ERROR_TOL:
-                if estimate["slab_relative_error"] <= self.REL_ERROR_TOL:
+                if estimate["slab_relative_error"] <= self.REL_ERROR_TOL and iteration > self.MIN_ITERATIONS:
                     break
                 else:
                     # import random

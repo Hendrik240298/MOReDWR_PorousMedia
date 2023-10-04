@@ -72,7 +72,7 @@ class Footing:
 # start time
 t = 0.0
 # end time
-T = 5.0e5 #5.0e6
+T = 5.0e6
 # time step size
 dt = 1000  # 5.e6/20  # 1000.0
 
@@ -81,11 +81,12 @@ n_timesteps = int(T / dt)
 
 # ----------- ROM parameters -----------
 REL_ERROR_TOL = .1e-2
-MAX_ITERATIONS = 20 #1000
+MAX_ITERATIONS = 100 #1000
+MIN_ITERATIONS = 20
 PARENT_SLAB_SIZE = int(n_timesteps/1)
 TOTAL_ENERGY = {
     "primal": {
-        "displacement": 1 - 1e-4,
+        "displacement": 1 - 1e-6,
         "pressure": 1 - 1e-10,
     },
     "dual": {
@@ -98,8 +99,14 @@ TOTAL_ENERGY = {
 #fom = FOM(t, T, dt, Mandel(), goal="mean")
 fom = FOM(t, T, dt, Footing(), goal="point")
 start_time_fom = time.time()
-fom.solve_primal(force_recompute=False)
+recomputed_primal_fom = fom.solve_primal(force_recompute=False)
 end_time_fom = time.time()
+time_FOM = end_time_fom - start_time_fom
+
+if recomputed_primal_fom:
+    # save FOM time to file
+    fom.save_time(time_FOM)
+
 fom.solve_dual(force_recompute=False)
 
 fom.solve_functional_trajectory()
@@ -119,6 +126,7 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
         fom,
         REL_ERROR_TOL=relative_error,
         MAX_ITERATIONS=MAX_ITERATIONS,
+        MIN_ITERATIONS=MIN_ITERATIONS,
         PARENT_SLAB_SIZE=PARENT_SLAB_SIZE,
         TOTAL_ENERGY=TOTAL_ENERGY,
         PLOTTING=False,
@@ -140,10 +148,10 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
         rom.plot_bottom_solution()
 
     # ----------- Results -----------
-    time_FOM = end_time_fom - start_time_fom
-    time_FOM = 163. #46.5
-    print("WARNING: FOM time is set to 163 seconds from previous run.")
+    time_FOM = fom.load_time()
     time_iROM = end_time_rom - start_time_rom
+    print("Time FOM: ", time_FOM)
+    print("Time iROM: ", time_iROM)
 
     J_h_t = fom.functional_values
     J_r_t = rom.functional_values
@@ -154,10 +162,12 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
     temporal_interval_error = rom.errors
 
     true_error = np.abs(J_h - J_r) #np.abs(np.sum(J_h_t-J_r_t))
+    print("True error: ", true_error)
     true_abs_error = None
     if fom.goal == "mean":
         true_abs_error = np.sum(np.abs(J_h_t-J_r_t))
     estimated_error = np.abs(np.sum(temporal_interval_error))
+    print("Estimated error: ", estimated_error)
     estimated_abs_error = np.sum(np.abs(temporal_interval_error))
     effectivity = true_error/estimated_error
 
@@ -176,7 +186,6 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
         result_matrix[i, 5] = true_abs_error/estimated_abs_error
 
     rom.plots_for_paper()
-
 
 header_legend= ["relative error [%]", "speedup", "FOM solves", "size ROM", "effectivity", "indicator"]
 
