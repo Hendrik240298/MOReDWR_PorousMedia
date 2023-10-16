@@ -3,6 +3,10 @@ import os
 import random
 import re
 import time
+import logging
+# configure logger
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+
 from multiprocessing import Pool
 
 # from mshr import *
@@ -491,38 +495,40 @@ class FOM:
             #     #     self.matrix["primal"]["system_matrix"][i, j] = self.matrix["primal"]["stress"][i, j]
 
             # print("write to matrix")
-            # self.matrix["primal"]["system_matrix"][
-            #     : self.dofs["displacement"], : self.dofs["displacement"]
-            # ] = self.matrix["primal"]["stress"]
+
             
             # print("change matrix type back")
             # self.matrix["primal"]["system_matrix"] = self.matrix["primal"]["system_matrix"].tocsr()
             
             # print("wrote first matrix")
             
-            # primal pressure to system matrix
-            print("primal pressure to system matrix")
-            self.matrix["primal"]["system_matrix"] = self.set_sub_matrices(self.matrix["primal"]["system_matrix"], 
+            # primal stress to system matrix
+            logging.debug("primal stress to system matrix")
+            self.matrix["primal"]["system_matrix"] = self.set_sub_matrix(self.matrix["primal"]["system_matrix"], 
                                                                            self.matrix["primal"]["stress"],
                                                                            "top-left")
     
             # primal elasto pressure to system matrix    
-            print("primal elasto pressure to system matrix")
-            self.matrix["primal"]["system_matrix"] = self.set_sub_matrices(self.matrix["primal"]["system_matrix"], 
+            logging.debug("primal elasto pressure to system matrix")
+            self.matrix["primal"]["system_matrix"] = self.set_sub_matrix(self.matrix["primal"]["system_matrix"], 
                                                                            self.matrix["primal"]["elasto_pressure"],
                                                                            "top-right")
             
             # primal laplace + time pressure to system matrix
-            print("primal laplace + time pressure to system matrix")
-            self.matrix["primal"]["system_matrix"] = self.set_sub_matrices(self.matrix["primal"]["system_matrix"], 
+            logging.debug("primal laplace + time pressure to system matrix")
+            self.matrix["primal"]["system_matrix"] = self.set_sub_matrix(self.matrix["primal"]["system_matrix"], 
                                                                            self.matrix["primal"]["laplace"] 
                                                                            + self.matrix["primal"]["time_pressure"],
                                                                            "bottom-right")
             # primal time displacement to system matrix
-            print("primal time displacement to system matrix")
-            self.matrix["primal"]["system_matrix"] = self.set_sub_matrices(self.matrix["primal"]["system_matrix"], 
+            logging.debug("primal time displacement to system matrix")
+            self.matrix["primal"]["system_matrix"] = self.set_sub_matrix(self.matrix["primal"]["system_matrix"], 
                                                                            self.matrix["primal"]["time_displacement"],
                                                                            "bottom-left")
+            
+            # self.matrix["primal"]["system_matrix"][
+            #     : self.dofs["displacement"], : self.dofs["displacement"]
+            # ] = self.matrix["primal"]["stress"]            
             
             # self.matrix["primal"]["system_matrix"][
             #     : self.dofs["displacement"], self.dofs["displacement"] :
@@ -541,16 +547,19 @@ class FOM:
 
 
             # system matrix wo boundary conditions
+            logging.debug("copy system matrix to system matrix no bc")
             self.matrix["primal"]["system_matrix_no_bc"] = self.matrix["primal"][
                 "system_matrix"
             ].copy()
 
             # dual system matrix as transposed primal system matrix
+            logging.debug("dual system matrix as transposed primal system matrix")
             self.matrix["dual"]["system_matrix"] = (
                 self.matrix["primal"]["system_matrix"].transpose().copy()
             )
 
             # apply BC
+            logging.debug("prepare BC")
             self.boundary_dof_vector = np.zeros(
                 (self.dofs["displacement"] + self.dofs["pressure"],)
             )
@@ -558,7 +567,10 @@ class FOM:
                 for i, val in _bc.get_boundary_values().items():
                     assert val == 0.0, "Only homogeneous Dirichlet BCs are supported so far."
                     self.boundary_dof_vector[i] = 1.0
+                    
             # apply homogeneous Dirichlet BC to system matrix
+            logging.debug("apply BC to primal system matrix")
+
             self.matrix["primal"]["system_matrix"] = self.matrix["primal"][
                 "system_matrix"
             ].multiply((1.0 - self.boundary_dof_vector).reshape(-1, 1)) + scipy.sparse.diags(
@@ -566,14 +578,17 @@ class FOM:
             )
 
             # apply homogeneous Dirichlet BC to dual system matrix
+            logging.debug("apply BC to dual system matrix")
             self.matrix["dual"]["system_matrix"] = self.matrix["dual"]["system_matrix"].multiply(
                 (1.0 - self.boundary_dof_vector).reshape(-1, 1)
             ) + scipy.sparse.diags(self.boundary_dof_vector)
 
+            logging.debug("factorize primal system matrix")
             self.solve_factorized_primal = scipy.sparse.linalg.factorized(
                 self.matrix["primal"]["system_matrix"].tocsc()
             )  # NOTE: LU factorization is dense
 
+            logging.debug("factorize dual system matrix")
             self.solve_factorized_dual = scipy.sparse.linalg.factorized(
                 self.matrix["dual"]["system_matrix"].tocsc()
             )
@@ -585,12 +600,22 @@ class FOM:
                     self.dofs["displacement"] + self.dofs["pressure"],
                 )
             )
-            self.matrix["primal"]["rhs_matrix"][
-                self.dofs["displacement"] :, self.dofs["displacement"] :
-            ] = self.matrix["primal"]["time_pressure"]
-            self.matrix["primal"]["rhs_matrix"][
-                self.dofs["displacement"] :, : self.dofs["displacement"]
-            ] = self.matrix["primal"]["time_displacement"]
+            
+            logging.debug("primal time pressure to rhs matrix")
+            self.matrix["primal"]["rhs_matrix"] = self.set_sub_matrix(self.matrix["primal"]["rhs_matrix"], 
+                                                                           self.matrix["primal"]["time_pressure"],
+                                                                           "bottom-right")
+            logging.debug("primal time displacement to rhs matrix")
+            self.matrix["primal"]["rhs_matrix"] = self.set_sub_matrix(self.matrix["primal"]["rhs_matrix"], 
+                                                                           self.matrix["primal"]["time_displacement"],
+                                                                           "bottom-left")
+            
+            # self.matrix["primal"]["rhs_matrix"][
+            #     self.dofs["displacement"] :, self.dofs["displacement"] :
+            # ] = self.matrix["primal"]["time_pressure"]
+            # self.matrix["primal"]["rhs_matrix"][
+            #     self.dofs["displacement"] :, : self.dofs["displacement"]
+            # ] = self.matrix["primal"]["time_displacement"]
         else:
             raise NotImplementedError("Only Mandel and Footing problem implemented so far.")
 
@@ -612,7 +637,7 @@ class FOM:
         # IO data
         self.SAVE_DIR = "results/"
 
-    def set_sub_matrices(self, matrix, sub_matrix, block):
+    def set_sub_matrix(self, matrix, sub_matrix, block):
         matrix = matrix.tolil()
         sub_matrix = sub_matrix.tolil()
         
