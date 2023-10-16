@@ -43,6 +43,7 @@ class FOM:
         print(f"Problem name: {self.problem_name}")
 
         self.mesh = None
+        self.MESH_REFINEMENTS = 2
         if self.problem_name == "Mandel":
             self.mesh = RectangleMesh(Point(0.0, 0.0), Point(100.0, 20.0), 5*16, 16)
             self.dim = self.mesh.geometry().dim()
@@ -57,7 +58,7 @@ class FOM:
             # plot(self.mesh)
             # plt.show()
         elif self.problem_name == "Footing":
-            self.mesh = BoxMesh(Point(-32.,-32.,0.), Point(32.,32.,64.), 8, 8, 8) #24, 24, 24)
+            self.mesh = BoxMesh(Point(-32.,-32.,0.), Point(32.,32.,64.), self.MESH_REFINEMENTS * 8, self.MESH_REFINEMENTS * 8, self.MESH_REFINEMENTS * 8) #24, 24, 24)
             self.dim = self.mesh.geometry().dim()
         else:
             raise NotImplementedError("Only Mandel and Footing problem implemented so far.")
@@ -466,21 +467,77 @@ class FOM:
                 )
             )
 
-            self.matrix["primal"]["system_matrix"][
-                : self.dofs["displacement"], : self.dofs["displacement"]
-            ] = self.matrix["primal"]["stress"]
-            self.matrix["primal"]["system_matrix"][
-                : self.dofs["displacement"], self.dofs["displacement"] :
-            ] = self.matrix["primal"]["elasto_pressure"]
-            self.matrix["primal"]["system_matrix"][
-                self.dofs["displacement"] :, self.dofs["displacement"] :
-            ] = self.matrix["primal"]["laplace"]
-            self.matrix["primal"]["system_matrix"][
-                self.dofs["displacement"] :, : self.dofs["displacement"]
-            ] = self.matrix["primal"]["time_displacement"]
-            self.matrix["primal"]["system_matrix"][
-                self.dofs["displacement"] :, self.dofs["displacement"] :
-            ] += self.matrix["primal"]["time_pressure"]
+            # print("before submatrix writing")
+
+            # print(f"type matrix lhs: {type(self.matrix['primal']['system_matrix'][: self.dofs['displacement'], : self.dofs['displacement']])}")
+            # print(f"type matrix rhs: {type(self.matrix['primal']['stress'])}")
+
+            # print(f"size matrix lhs: {self.matrix['primal']['system_matrix'][: self.dofs['displacement'], : self.dofs['displacement']].shape}")
+            # print(f"size matrix rhs: {self.matrix['primal']['stress'].shape}")
+
+            # rows, cols = self.matrix["primal"]["stress"].nonzero()
+            
+            # print(f"# of nonzeros: {len(rows)}")
+            # print("write first matrix")          
+            
+            # print("change matrix type")
+            # self.matrix["primal"]["system_matrix"] = self.matrix["primal"]["system_matrix"].tolil()
+            
+            # # for i in range(self.matrix['primal']['stress'].shape[0]):
+            # #     if i % 5e3 == 0:
+            # #         print(f"i: {i}")
+            # #     test_matrix[i, : self.dofs["displacement"]] = self.matrix["primal"]["stress"][i, :]
+            #     # for j in cols:
+            #     #     self.matrix["primal"]["system_matrix"][i, j] = self.matrix["primal"]["stress"][i, j]
+
+            # print("write to matrix")
+            # self.matrix["primal"]["system_matrix"][
+            #     : self.dofs["displacement"], : self.dofs["displacement"]
+            # ] = self.matrix["primal"]["stress"]
+            
+            # print("change matrix type back")
+            # self.matrix["primal"]["system_matrix"] = self.matrix["primal"]["system_matrix"].tocsr()
+            
+            # print("wrote first matrix")
+            
+            # primal pressure to system matrix
+            print("primal pressure to system matrix")
+            self.matrix["primal"]["system_matrix"] = self.set_sub_matrices(self.matrix["primal"]["system_matrix"], 
+                                                                           self.matrix["primal"]["stress"],
+                                                                           "top-left")
+    
+            # primal elasto pressure to system matrix    
+            print("primal elasto pressure to system matrix")
+            self.matrix["primal"]["system_matrix"] = self.set_sub_matrices(self.matrix["primal"]["system_matrix"], 
+                                                                           self.matrix["primal"]["elasto_pressure"],
+                                                                           "top-right")
+            
+            # primal laplace + time pressure to system matrix
+            print("primal laplace + time pressure to system matrix")
+            self.matrix["primal"]["system_matrix"] = self.set_sub_matrices(self.matrix["primal"]["system_matrix"], 
+                                                                           self.matrix["primal"]["laplace"] 
+                                                                           + self.matrix["primal"]["time_pressure"],
+                                                                           "bottom-right")
+            # primal time displacement to system matrix
+            print("primal time displacement to system matrix")
+            self.matrix["primal"]["system_matrix"] = self.set_sub_matrices(self.matrix["primal"]["system_matrix"], 
+                                                                           self.matrix["primal"]["time_displacement"],
+                                                                           "bottom-left")
+            
+            # self.matrix["primal"]["system_matrix"][
+            #     : self.dofs["displacement"], self.dofs["displacement"] :
+            # ] = self.matrix["primal"]["elasto_pressure"]
+            
+            # self.matrix["primal"]["system_matrix"][
+            #     self.dofs["displacement"] :, self.dofs["displacement"] :
+            # ] = self.matrix["primal"]["laplace"]
+            # self.matrix["primal"]["system_matrix"][
+            #     self.dofs["displacement"] :, self.dofs["displacement"] :
+            # ] += self.matrix["primal"]["time_pressure"]
+
+            # self.matrix["primal"]["system_matrix"][
+            #     self.dofs["displacement"] :, : self.dofs["displacement"]
+            # ] = self.matrix["primal"]["time_displacement"]
 
 
             # system matrix wo boundary conditions
@@ -554,6 +611,23 @@ class FOM:
 
         # IO data
         self.SAVE_DIR = "results/"
+
+    def set_sub_matrices(self, matrix, sub_matrix, block):
+        matrix = matrix.tolil()
+        sub_matrix = sub_matrix.tolil()
+        
+        if block == "top-left":
+            matrix[: self.dofs["displacement"], : self.dofs["displacement"]] = sub_matrix
+        elif block == "top-right":
+            matrix[: self.dofs["displacement"], self.dofs["displacement"] :] = sub_matrix
+        elif block == "bottom-left":
+            matrix[self.dofs["displacement"] :, : self.dofs["displacement"]] = sub_matrix
+        elif block == "bottom-right":
+            matrix[self.dofs["displacement"] :, self.dofs["displacement"] :] = sub_matrix
+        else: 
+            raise NotImplementedError(f"Block {block} does not exist.")
+        
+        return matrix.tocsr()
 
     def save_time(self, computation_time):
         pattern = r"time_goal_" + self.goal + r"\d{6}\.npz"
