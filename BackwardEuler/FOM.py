@@ -1,22 +1,31 @@
+from tqdm import tqdm
+from petsc4py import PETSc
+from mumps import DMumpsContext
+from mpi4py import MPI
+from dolfin import *
+import scipy
+import rich.table
+import rich.console
+import petsc4py
+import numpy as np
+import matplotlib.pyplot as plt
+from multiprocessing import Pool
+import logging
 import math
 import os
 import random
 import re
 import time
-import logging
-# configure logger
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-from multiprocessing import Pool
+# configure logger
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
+
 
 # from mshr import *
-import matplotlib.pyplot as plt
-import numpy as np
-import rich.console
-import rich.table
-import scipy
-from dolfin import *
-from tqdm import tqdm
+
+# petsc
+
+# mpi + mumps
 
 
 class FOM:
@@ -29,7 +38,10 @@ class FOM:
         # ORDERING IS IMPORTANT FOR ROM!
         self.quantities = quantities
         if problem.__class__.__name__ == "Mandel":
-            assert goal in ["mean", "endtime"], "goal must be either 'mean' or 'endtime' for Mandel problem"
+            assert goal in [
+                "mean",
+                "endtime",
+            ], "goal must be either 'mean' or 'endtime' for Mandel problem"
         elif problem.__class__.__name__ == "Footing":
             assert goal in ["point"], "goal must be 'point' for Footing problem"
         self.goal = goal
@@ -47,9 +59,9 @@ class FOM:
         print(f"Problem name: {self.problem_name}")
 
         self.mesh = None
-        self.MESH_REFINEMENTS = 2
+        self.MESH_REFINEMENTS = 1
         if self.problem_name == "Mandel":
-            self.mesh = RectangleMesh(Point(0.0, 0.0), Point(100.0, 20.0), 5*16, 16)
+            self.mesh = RectangleMesh(Point(0.0, 0.0), Point(100.0, 20.0), 5 * 16, 16)
             self.dim = self.mesh.geometry().dim()
 
             # plt.figure(figsize=(50,21))
@@ -62,7 +74,13 @@ class FOM:
             # plot(self.mesh)
             # plt.show()
         elif self.problem_name == "Footing":
-            self.mesh = BoxMesh(Point(-32.,-32.,0.), Point(32.,32.,64.), self.MESH_REFINEMENTS * 8, self.MESH_REFINEMENTS * 8, self.MESH_REFINEMENTS * 8) #24, 24, 24)
+            self.mesh = BoxMesh(
+                Point(-32.0, -32.0, 0.0),
+                Point(32.0, 32.0, 64.0),
+                self.MESH_REFINEMENTS * 8,
+                self.MESH_REFINEMENTS * 8,
+                self.MESH_REFINEMENTS * 8,
+            )  # 24, 24, 24)
             self.dim = self.mesh.geometry().dim()
         else:
             raise NotImplementedError("Only Mandel and Footing problem implemented so far.")
@@ -103,9 +121,13 @@ class FOM:
             bc_down = DirichletBC(self.V.sub(0).sub(1), Constant(0.0), down)  # down: u_y = 0
             self.bc = [bc_left, bc_right, bc_down]
         elif self.problem_name == "Footing":
-            compression = CompiledSubDomain("near(x[2], 64.) && x[0] >= -16. && x[0] <= 16. && x[1] >= -16. && x[1] <= 16. && on_boundary")
+            compression = CompiledSubDomain(
+                "near(x[2], 64.) && x[0] >= -16. && x[0] <= 16. && x[1] >= -16. && x[1] <= 16. && on_boundary"
+            )
             dirichlet = CompiledSubDomain("near(x[2], 0.) && on_boundary")
-            neumann = CompiledSubDomain("( near(x[0], -32.) || near(x[0], 32.) || near(x[1], -32.) || near(x[1], 32.) || (near(x[2], 64.) && (x[0] <= -16. || x[0] >= 16. || x[1] <= -16. || x[1] >= 16.) ) ) && on_boundary")
+            neumann = CompiledSubDomain(
+                "( near(x[0], -32.) || near(x[0], 32.) || near(x[1], -32.) || near(x[1], 32.) || (near(x[2], 64.) && (x[0] <= -16. || x[0] >= 16. || x[1] <= -16. || x[1] >= 16.) ) ) && on_boundary"
+            )
 
             facet_marker = MeshFunction("size_t", self.mesh, 1)
             facet_marker.set_all(0)
@@ -116,20 +138,33 @@ class FOM:
             self.ds_compression = Measure("ds", subdomain_data=facet_marker, subdomain_id=1)
             self.ds_neumann = Measure("ds", subdomain_data=facet_marker, subdomain_id=3)
 
-            bc_down_x = DirichletBC(self.V.sub(0).sub(0), Constant(0.), dirichlet) # dirichlet: u_x = 0
-            bc_down_y = DirichletBC(self.V.sub(0).sub(1), Constant(0.), dirichlet) # dirichlet: u_y = 0
-            bc_down_z = DirichletBC(self.V.sub(0).sub(2), Constant(0.), dirichlet) # dirichlet: u_z = 0
-            bc_compression_p = DirichletBC(self.V.sub(1), Constant(0.), dirichlet) # dirichlet: p = 0
+            bc_down_x = DirichletBC(
+                self.V.sub(0).sub(0), Constant(0.0), dirichlet
+            )  # dirichlet: u_x = 0
+            bc_down_y = DirichletBC(
+                self.V.sub(0).sub(1), Constant(0.0), dirichlet
+            )  # dirichlet: u_y = 0
+            bc_down_z = DirichletBC(
+                self.V.sub(0).sub(2), Constant(0.0), dirichlet
+            )  # dirichlet: u_z = 0
+            bc_compression_p = DirichletBC(
+                self.V.sub(1), Constant(0.0), dirichlet
+            )  # dirichlet: p = 0
             self.bc = [bc_down_x, bc_down_y, bc_down_z, bc_compression_p]
 
-            # for \Gamma_{compression} integral workaround: create FE vector which is 1 on \Gamma_{compression} and 0 else
+            # for \Gamma_{compression} integral workaround: create FE vector
+            # which is 1 on \Gamma_{compression} and 0 else
             def compression_boundary(x, on_boundary):
-                return on_boundary and x[2] > 64. - 1e-14 and (np.abs(x[0]) <= 16. and np.abs(x[1]) <= 16.)
+                return (
+                    on_boundary
+                    and x[2] > 64.0 - 1e-14
+                    and (np.abs(x[0]) <= 16.0 and np.abs(x[1]) <= 16.0)
+                )
 
             bc_compression = DirichletBC(self.V, Constant((0, 0, 1, 0)), compression_boundary)
 
-            self.indicator_compression = Function(self.V) 
-            bc_compression.apply(self.indicator_compression.vector()) 
+            self.indicator_compression = Function(self.V)
+            bc_compression.apply(self.indicator_compression.vector())
         else:
             raise NotImplementedError("Only Mandel problem implemented so far.")
 
@@ -386,7 +421,11 @@ class FOM:
                 as_backend_type(
                     assemble(
                         -self.alpha_biot * inner(p * Identity(self.dim), grad(phi_u)) * dx
-                        + self.alpha_biot * inner(self.indicator_compression[2]*p*Constant((0.,0.,1.)), phi_u) * dx
+                        + self.alpha_biot
+                        * inner(
+                            self.indicator_compression[2] * p * Constant((0.0, 0.0, 1.0)), phi_u
+                        )
+                        * dx
                     )
                 )
                 .mat()
@@ -433,11 +472,15 @@ class FOM:
             )[self.dofs["displacement"] :, : self.dofs["displacement"]]
 
             self.vector["primal"]["traction"] = np.array(
-                assemble(Constant(self.traction_z_biot) * inner(self.indicator_compression, Phi) * dx)
+                assemble(
+                    Constant(self.traction_z_biot) * inner(self.indicator_compression, Phi) * dx
+                )
             )[: self.dofs["displacement"]]
 
             self.vector["primal"]["traction_full_vector"] = np.array(
-                assemble(Constant(self.traction_z_biot) * inner(self.indicator_compression, Phi) * dx)
+                assemble(
+                    Constant(self.traction_z_biot) * inner(self.indicator_compression, Phi) * dx
+                )
             )
 
             if self.goal == "point":
@@ -457,11 +500,10 @@ class FOM:
                 # QoI: pressure integral over \Gamma_{compression}
                 self.vector["primal"]["point"] = np.array(
                     assemble(self.indicator_compression[2] * phi_p * dx)
-                )[self.dofs["displacement"] : ]
+                )[self.dofs["displacement"] :]
                 self.vector["primal"]["point_full_vector"] = np.array(
                     assemble(self.indicator_compression[2] * phi_p * dx)
                 )
-
 
             # build system matrix
             self.matrix["primal"]["system_matrix"] = scipy.sparse.csr_matrix(
@@ -471,80 +513,34 @@ class FOM:
                 )
             )
 
-            # print("before submatrix writing")
-
-            # print(f"type matrix lhs: {type(self.matrix['primal']['system_matrix'][: self.dofs['displacement'], : self.dofs['displacement']])}")
-            # print(f"type matrix rhs: {type(self.matrix['primal']['stress'])}")
-
-            # print(f"size matrix lhs: {self.matrix['primal']['system_matrix'][: self.dofs['displacement'], : self.dofs['displacement']].shape}")
-            # print(f"size matrix rhs: {self.matrix['primal']['stress'].shape}")
-
-            # rows, cols = self.matrix["primal"]["stress"].nonzero()
-            
-            # print(f"# of nonzeros: {len(rows)}")
-            # print("write first matrix")          
-            
-            # print("change matrix type")
-            # self.matrix["primal"]["system_matrix"] = self.matrix["primal"]["system_matrix"].tolil()
-            
-            # # for i in range(self.matrix['primal']['stress'].shape[0]):
-            # #     if i % 5e3 == 0:
-            # #         print(f"i: {i}")
-            # #     test_matrix[i, : self.dofs["displacement"]] = self.matrix["primal"]["stress"][i, :]
-            #     # for j in cols:
-            #     #     self.matrix["primal"]["system_matrix"][i, j] = self.matrix["primal"]["stress"][i, j]
-
-            # print("write to matrix")
-
-            
-            # print("change matrix type back")
-            # self.matrix["primal"]["system_matrix"] = self.matrix["primal"]["system_matrix"].tocsr()
-            
-            # print("wrote first matrix")
-            
             # primal stress to system matrix
             logging.debug("primal stress to system matrix")
-            self.matrix["primal"]["system_matrix"] = self.set_sub_matrix(self.matrix["primal"]["system_matrix"], 
-                                                                           self.matrix["primal"]["stress"],
-                                                                           "top-left")
-    
-            # primal elasto pressure to system matrix    
+            self.matrix["primal"]["system_matrix"] = self.set_sub_matrix(
+                self.matrix["primal"]["system_matrix"], self.matrix["primal"]["stress"], "top-left"
+            )
+
+            # primal elasto pressure to system matrix
             logging.debug("primal elasto pressure to system matrix")
-            self.matrix["primal"]["system_matrix"] = self.set_sub_matrix(self.matrix["primal"]["system_matrix"], 
-                                                                           self.matrix["primal"]["elasto_pressure"],
-                                                                           "top-right")
-            
+            self.matrix["primal"]["system_matrix"] = self.set_sub_matrix(
+                self.matrix["primal"]["system_matrix"],
+                self.matrix["primal"]["elasto_pressure"],
+                "top-right",
+            )
+
             # primal laplace + time pressure to system matrix
             logging.debug("primal laplace + time pressure to system matrix")
-            self.matrix["primal"]["system_matrix"] = self.set_sub_matrix(self.matrix["primal"]["system_matrix"], 
-                                                                           self.matrix["primal"]["laplace"] 
-                                                                           + self.matrix["primal"]["time_pressure"],
-                                                                           "bottom-right")
+            self.matrix["primal"]["system_matrix"] = self.set_sub_matrix(
+                self.matrix["primal"]["system_matrix"],
+                self.matrix["primal"]["laplace"] + self.matrix["primal"]["time_pressure"],
+                "bottom-right",
+            )
             # primal time displacement to system matrix
             logging.debug("primal time displacement to system matrix")
-            self.matrix["primal"]["system_matrix"] = self.set_sub_matrix(self.matrix["primal"]["system_matrix"], 
-                                                                           self.matrix["primal"]["time_displacement"],
-                                                                           "bottom-left")
-            
-            # self.matrix["primal"]["system_matrix"][
-            #     : self.dofs["displacement"], : self.dofs["displacement"]
-            # ] = self.matrix["primal"]["stress"]            
-            
-            # self.matrix["primal"]["system_matrix"][
-            #     : self.dofs["displacement"], self.dofs["displacement"] :
-            # ] = self.matrix["primal"]["elasto_pressure"]
-            
-            # self.matrix["primal"]["system_matrix"][
-            #     self.dofs["displacement"] :, self.dofs["displacement"] :
-            # ] = self.matrix["primal"]["laplace"]
-            # self.matrix["primal"]["system_matrix"][
-            #     self.dofs["displacement"] :, self.dofs["displacement"] :
-            # ] += self.matrix["primal"]["time_pressure"]
-
-            # self.matrix["primal"]["system_matrix"][
-            #     self.dofs["displacement"] :, : self.dofs["displacement"]
-            # ] = self.matrix["primal"]["time_displacement"]
-
+            self.matrix["primal"]["system_matrix"] = self.set_sub_matrix(
+                self.matrix["primal"]["system_matrix"],
+                self.matrix["primal"]["time_displacement"],
+                "bottom-left",
+            )
 
             # system matrix wo boundary conditions
             logging.debug("copy system matrix to system matrix no bc")
@@ -567,7 +563,7 @@ class FOM:
                 for i, val in _bc.get_boundary_values().items():
                     assert val == 0.0, "Only homogeneous Dirichlet BCs are supported so far."
                     self.boundary_dof_vector[i] = 1.0
-                    
+
             # apply homogeneous Dirichlet BC to system matrix
             logging.debug("apply BC to primal system matrix")
 
@@ -583,7 +579,7 @@ class FOM:
                 (1.0 - self.boundary_dof_vector).reshape(-1, 1)
             ) + scipy.sparse.diags(self.boundary_dof_vector)
 
-            logging.debug("factorize primal system matrix")
+            logging.debug("factorize primal system matrix with factorized")
             self.solve_factorized_primal = scipy.sparse.linalg.factorized(
                 self.matrix["primal"]["system_matrix"].tocsc()
             )  # NOTE: LU factorization is dense
@@ -600,16 +596,20 @@ class FOM:
                     self.dofs["displacement"] + self.dofs["pressure"],
                 )
             )
-            
+
             logging.debug("primal time pressure to rhs matrix")
-            self.matrix["primal"]["rhs_matrix"] = self.set_sub_matrix(self.matrix["primal"]["rhs_matrix"], 
-                                                                           self.matrix["primal"]["time_pressure"],
-                                                                           "bottom-right")
+            self.matrix["primal"]["rhs_matrix"] = self.set_sub_matrix(
+                self.matrix["primal"]["rhs_matrix"],
+                self.matrix["primal"]["time_pressure"],
+                "bottom-right",
+            )
             logging.debug("primal time displacement to rhs matrix")
-            self.matrix["primal"]["rhs_matrix"] = self.set_sub_matrix(self.matrix["primal"]["rhs_matrix"], 
-                                                                           self.matrix["primal"]["time_displacement"],
-                                                                           "bottom-left")
-            
+            self.matrix["primal"]["rhs_matrix"] = self.set_sub_matrix(
+                self.matrix["primal"]["rhs_matrix"],
+                self.matrix["primal"]["time_displacement"],
+                "bottom-left",
+            )
+
             # self.matrix["primal"]["rhs_matrix"][
             #     self.dofs["displacement"] :, self.dofs["displacement"] :
             # ] = self.matrix["primal"]["time_pressure"]
@@ -640,7 +640,7 @@ class FOM:
     def set_sub_matrix(self, matrix, sub_matrix, block):
         matrix = matrix.tolil()
         sub_matrix = sub_matrix.tolil()
-        
+
         if block == "top-left":
             matrix[: self.dofs["displacement"], : self.dofs["displacement"]] = sub_matrix
         elif block == "top-right":
@@ -649,9 +649,9 @@ class FOM:
             matrix[self.dofs["displacement"] :, : self.dofs["displacement"]] = sub_matrix
         elif block == "bottom-right":
             matrix[self.dofs["displacement"] :, self.dofs["displacement"] :] = sub_matrix
-        else: 
+        else:
             raise NotImplementedError(f"Block {block} does not exist.")
-        
+
         return matrix.tocsr()
 
     def save_time(self, computation_time):
@@ -753,7 +753,14 @@ class FOM:
                 print(f"Overwrite {file}")
                 return
 
-        file_name = "results/solution_" + solution_type + "_goal_" + self.goal + str(len(files)).zfill(6) + ".npz"
+        file_name = (
+            "results/solution_"
+            + solution_type
+            + "_goal_"
+            + self.goal
+            + str(len(files)).zfill(6)
+            + ".npz"
+        )
         np.savez(
             file_name,
             displacement=self.Y[solution_type]["displacement"],
@@ -801,14 +808,16 @@ class FOM:
             self.functional_values = np.zeros((self.dofs["time"] - 1,))
             for i in range(self.dofs["time"] - 1):
                 self.functional_values[i] = (
-                    self.vector["primal"]["pressure_down"].dot(self.Y["primal"]["pressure"][:, i + 1])
+                    self.vector["primal"]["pressure_down"].dot(
+                        self.Y["primal"]["pressure"][:, i + 1]
+                    )
                     * self.dt
                 )
             self.functional = np.sum(self.functional_values)
         elif self.goal == "endtime":
             self.functional_values = None
-            self.functional = (
-                self.vector["primal"]["pressure_down"].dot(self.Y["primal"]["pressure"][:, -1])
+            self.functional = self.vector["primal"]["pressure_down"].dot(
+                self.Y["primal"]["pressure"][:, -1]
             )
         elif self.goal == "point":
             self.functional_values = np.zeros((self.dofs["time"] - 1,))
@@ -818,7 +827,7 @@ class FOM:
                     * self.dt
                 )
             self.functional = np.sum(self.functional_values)
-        
+
         # print cost functional in scientific notation
         # print(f"Cost functional: {self.functional:.4e}")
 
@@ -920,7 +929,9 @@ class FOM:
 
         # derivative of CF on rhs
         if self.goal == "mean":
-            dual_rhs[self.dofs["displacement"] :] += self.dt * self.vector["primal"]["pressure_down"]
+            dual_rhs[self.dofs["displacement"] :] += (
+                self.dt * self.vector["primal"]["pressure_down"]
+            )
         elif self.goal == "point":
             dual_rhs[self.dofs["displacement"] :] += self.dt * self.vector["primal"]["point"]
 
@@ -962,7 +973,7 @@ class FOM:
         if not force_recompute:
             if self.load_solution(solution_type="dual"):
                 return
-            
+
         self.Y["dual"]["displacement"][:, -1] = np.zeros((self.dofs["displacement"],))
         self.Y["dual"]["pressure"][:, -1] = np.zeros((self.dofs["pressure"],))
 
