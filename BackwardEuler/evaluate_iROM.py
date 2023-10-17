@@ -7,9 +7,7 @@ import dolfin
 import matplotlib.pyplot as plt
 import numpy as np
 from dolfin import *
-
 from tabulate import tabulate
-
 
 from FOM import FOM
 from iROM import iROM
@@ -44,6 +42,7 @@ class Mandel:
         1.0 - 2.0 * poisson_ratio_nu
     )
 
+
 @dataclass
 class Footing:
     # M_biot = Biot's constant
@@ -69,6 +68,7 @@ class Footing:
         1.0 - 2.0 * poisson_ratio_nu
     )
 
+
 # start time
 t = 0.0
 # end time
@@ -80,10 +80,10 @@ n_timesteps = int(T / dt)
 # dt = T / n_timesteps
 
 # ----------- ROM parameters -----------
-REL_ERROR_TOL = .1e-2
-MAX_ITERATIONS = 100 #1000
+REL_ERROR_TOL = 0.1e-2
+MAX_ITERATIONS = 100  # 1000
 MIN_ITERATIONS = 20
-PARENT_SLAB_SIZE = int(n_timesteps/1)
+PARENT_SLAB_SIZE = int(n_timesteps / 1)
 TOTAL_ENERGY = {
     "primal": {
         "displacement": 1 - 1e-6,
@@ -96,7 +96,7 @@ TOTAL_ENERGY = {
 }
 
 # ----------- FOM -----------
-#fom = FOM(t, T, dt, Mandel(), goal="mean")
+# fom = FOM(t, T, dt, Mandel(), goal="mean")
 fom = FOM(t, T, dt, Footing(), goal="point")
 start_time_fom = time.time()
 recomputed_primal_fom = fom.solve_primal(force_recompute=False)
@@ -135,14 +135,14 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
     # POD
     rom.init_POD()
     start_time_rom = time.time()
-    rom.run_parent_slab() # parent-slabbing MORe DWR
+    rom.run_parent_slab()  # parent-slabbing MORe DWR
     end_time_rom = time.time()
 
     # post processing
     rom.update_matrices_plotting()
 
     # ----------- ROM Error -----------
-    rom.compute_error() # used for plotting of error NOT cost functionals
+    rom.compute_error()  # used for plotting of error NOT cost functionals
     rom.solve_functional_trajectory()
     if fom.problem_name == "Mandel":
         rom.plot_bottom_solution()
@@ -161,41 +161,60 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
 
     temporal_interval_error = rom.errors
 
-    true_error = np.abs(J_h - J_r) #np.abs(np.sum(J_h_t-J_r_t))
+    true_error = np.abs(J_h - J_r)  # np.abs(np.sum(J_h_t-J_r_t))
     print("True error: ", true_error)
     true_abs_error = None
     if fom.goal == "mean":
-        true_abs_error = np.sum(np.abs(J_h_t-J_r_t))
+        true_abs_error = np.sum(np.abs(J_h_t - J_r_t))
     estimated_error = np.abs(np.sum(temporal_interval_error))
     print("Estimated error: ", estimated_error)
     estimated_abs_error = np.sum(np.abs(temporal_interval_error))
-    effectivity = true_error/estimated_error
+    effectivity = true_error / estimated_error
 
     # relative error
-    result_matrix[i, 0] = 100*np.abs(J_h - J_r) / np.abs(J_h) #100* np.abs(np.sum(J_h_t) - np.sum(J_r_t))/np.abs(np.sum(J_h_t))
+    # 100* np.abs(np.sum(J_h_t) - np.sum(J_r_t))/np.abs(np.sum(J_h_t))
+    result_matrix[i, 0] = 100 * np.abs(J_h - J_r) / np.abs(J_h)
     # speedup
-    result_matrix[i, 1] = time_FOM/time_iROM
+    result_matrix[i, 1] = time_FOM / time_iROM
     # fom solves
     result_matrix[i, 2] = rom.fom_solves
     # size of ROM
-    result_matrix[i, 3] = str(rom.POD["primal"]["displacement"]["basis"].shape[1]) + " / " + str(rom.POD["primal"]["pressure"]["basis"].shape[1]) + " + " + str(rom.POD["dual"]["displacement"]["basis"].shape[1]) + " / " + str(rom.POD["dual"]["pressure"]["basis"].shape[1])
+    result_matrix[i, 3] = (
+        str(rom.POD["primal"]["displacement"]["basis"].shape[1])
+        + " / "
+        + str(rom.POD["primal"]["pressure"]["basis"].shape[1])
+        + " + "
+        + str(rom.POD["dual"]["displacement"]["basis"].shape[1])
+        + " / "
+        + str(rom.POD["dual"]["pressure"]["basis"].shape[1])
+    )
     # effectivity index
     result_matrix[i, 4] = effectivity
     if fom.goal == "mean":
         # indicator index
-        result_matrix[i, 5] = true_abs_error/estimated_abs_error
+        result_matrix[i, 5] = true_abs_error / estimated_abs_error
 
     rom.plots_for_paper()
 
-header_legend= ["relative error [%]", "speedup", "FOM solves", "size ROM", "effectivity", "indicator"]
+header_legend = [
+    "relative error [%]",
+    "speedup",
+    "FOM solves",
+    "size ROM",
+    "effectivity",
+    "indicator",
+]
 
 
-table = tabulate(result_matrix, headers=header_legend,
-                 showindex=100*np.array(REL_ERROR_TOLERANCES))
+table = tabulate(
+    result_matrix, headers=header_legend, showindex=100 * np.array(REL_ERROR_TOLERANCES)
+)
 print(table)
 
-table = tabulate(result_matrix, headers=header_legend,
-                 showindex=100*np.array(REL_ERROR_TOLERANCES), tablefmt="latex")
+table = tabulate(
+    result_matrix,
+    headers=header_legend,
+    showindex=100 * np.array(REL_ERROR_TOLERANCES),
+    tablefmt="latex",
+)
 print(table)
-
-
