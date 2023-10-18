@@ -588,6 +588,8 @@ class FOM:
             if self.MESH_REFINEMENTS > 0:
                 self.direct_solve = False
 
+            self.SOLVER_TOL = 0.0 if self.direct_solve else 1.e-8
+
             if self.direct_solve:
                 logging.debug("factorize primal system matrix with factorized")
                 self.solve_factorized_primal = scipy.sparse.linalg.factorized(
@@ -738,6 +740,7 @@ class FOM:
                 *[float(x) for x in self.problem.__dict__.values()],
                 self.MESH_REFINEMENTS,
                 self.direct_solve,
+                self.SOLVER_TOL, 
             ]
         )
 
@@ -783,6 +786,7 @@ class FOM:
                 *[float(x) for x in self.problem.__dict__.values()],
                 self.MESH_REFINEMENTS,
                 self.direct_solve,
+                self.SOLVER_TOL, 
             ]
         )
 
@@ -810,6 +814,7 @@ class FOM:
                 *[float(x) for x in self.problem.__dict__.values()],
                 self.MESH_REFINEMENTS,
                 self.direct_solve,
+                self.SOLVER_TOL, 
             ]
         )
 
@@ -866,6 +871,7 @@ class FOM:
                 *[float(x) for x in self.problem.__dict__.values()],
                 self.MESH_REFINEMENTS,
                 self.direct_solve,
+                self.SOLVER_TOL, 
             ]
         )
 
@@ -966,7 +972,7 @@ class FOM:
                 rhs,
                 M=self.preconditioner["primal"],
                 x0=old_solution,
-                tol=1e-8,
+                tol=self.SOLVER_TOL,
                 maxiter=1e5,
                 restart=500,
                 callback=counter,
@@ -1053,7 +1059,7 @@ class FOM:
                 dual_rhs,
                 M=self.preconditioner["dual"],
                 x0=old_dual_solution,
-                tol=1e-8,
+                tol=self.SOLVER_TOL,
                 maxiter=1e5,
                 restart=500,
                 callback=counter,
