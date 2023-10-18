@@ -736,6 +736,8 @@ class FOM:
                 self.T,
                 self.problem_name,
                 *[float(x) for x in self.problem.__dict__.values()],
+                self.MESH_REFINEMENTS,
+                self.direct_solve,
             ]
         )
 
@@ -779,6 +781,8 @@ class FOM:
                 self.T,
                 self.problem_name,
                 *[float(x) for x in self.problem.__dict__.values()],
+                self.MESH_REFINEMENTS,
+                self.direct_solve,
             ]
         )
 
@@ -963,7 +967,7 @@ class FOM:
                 M=self.preconditioner["primal"],
                 x0=old_solution,
                 tol=1e-8,
-                maxiter=5e4,
+                maxiter=1e5,
                 restart=500,
                 callback=counter,
             )
@@ -1050,7 +1054,7 @@ class FOM:
                 M=self.preconditioner["dual"],
                 x0=old_dual_solution,
                 tol=1e-8,
-                maxiter=5e4,
+                maxiter=1e5,
                 restart=500,
                 callback=counter,
             )
