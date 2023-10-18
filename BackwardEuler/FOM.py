@@ -22,7 +22,6 @@ import pyamg
 # configure logger
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 
-
 ## GMRES callback, c.f. https://stackoverflow.com/questions/33512081/getting-the-number-of-iterations-of-scipys-gmres-iterative-method
 class gmres_counter(object):
     def __init__(self, disp=False):
@@ -618,24 +617,13 @@ class FOM:
                 D_inv = {}
                 D_inv["primal"] = scipy.sparse.diags(1.0 / self.matrix["primal"]["system_matrix"].diagonal()).tocsr()
                 D_inv["dual"] = scipy.sparse.diags(1.0 / self.matrix["dual"]["system_matrix"].diagonal()).tocsr()
-
+                
                 # preconditioner_matrix["primal"] = (1/omega * (D + omega * E)).tocsr()
                 # preconditioner_matrix["dual"] = scipy.sparse.diags(
                 #     self.matrix["dual"]["system_matrix"].diagonal()
                 # ).tocsr()
                 
-                # # ml = pyamg.ruge_stuben_solver(self.matrix["primal"]["system_matrix"])
-                # # print(ml)
-                
-                # # logging.debug("build linear operator")
-                
-                # # ml_x = lambda x: ml.solve(x, tol=1e-5)
-                
-                # # self.preconditioner["primal"] = scipy.sparse.linalg.LinearOperator(
-                # #     self.matrix["primal"]["system_matrix"].shape, ml_x
-                # # )                
-                # preconditioner_x = {}
-                
+
                 # preconditioner_x["primal"] = lambda x: scipy.sparse.linalg.spsolve_triangular(preconditioner_matrix["primal"], x)
                 # preconditioner_x["dual"] = lambda x: scipy.sparse.linalg.spsolve_triangular(preconditioner_matrix["dual"], x)
                 
@@ -656,6 +644,24 @@ class FOM:
                     self.matrix["dual"]["system_matrix"].shape, preconditioner_x["dual"]
                 )
 
+                ml = {}
+                ml["primal"] = pyamg.ruge_stuben_solver(self.matrix["primal"]["system_matrix"])
+                ml["dual"] = pyamg.ruge_stuben_solver(self.matrix["dual"]["system_matrix"])
+                
+                print(ml["primal"])
+                print(ml["dual"])
+                
+                ml_x = {}
+                ml_x["primal"] = lambda x: ml["primal"].solve(x, tol=1e-5)
+                ml_x["dual"] = lambda x: ml["dual"].solve(x, tol=1e-5)
+                
+                self.preconditioner["primal_backup"] = scipy.sparse.linalg.LinearOperator(
+                    self.matrix["primal"]["system_matrix"].shape, ml_x["primal"]
+                )
+                self.preconditioner["dual_backup"] = scipy.sparse.linalg.LinearOperator(
+                    self.matrix["dual"]["system_matrix"].shape, ml_x["dual"]
+                )
+                       
 
 
             # build rhs matrix
@@ -722,6 +728,7 @@ class FOM:
             raise NotImplementedError(f"Block {block} does not exist.")
 
         return matrix.tocsr()
+
 
     def save_time(self, computation_time):
         pattern = r"time_goal_" + self.goal + "_" + r"\d{6}\.npz"
@@ -974,11 +981,27 @@ class FOM:
                 M=self.preconditioner["primal"],
                 x0=old_solution,
                 tol=self.SOLVER_TOL,
-                maxiter=1e5,
-                restart=500,
+                maxiter=5e2,
+                restart=5e2,
                 callback=counter,
             )
-        
+            
+            if exit_code != 0:
+                logging.info("GMRES did not converge. Try with backup preconditioner.")   
+                counter_backup = gmres_counter()  
+                solution, exit_code = scipy.sparse.linalg.gmres(
+                    self.matrix["primal"]["system_matrix"],
+                    rhs,
+                    M=self.preconditioner["primal_backup"],
+                    x0=solution,
+                    tol=self.SOLVER_TOL,
+                    maxiter=5e2,
+                    restart=5e2,
+                    callback=counter_backup,
+                )                
+                if exit_code == 0:
+                    logging.info(f"Backup converged in {counter_backup.niter} iterations.")
+                            
             # throw exepction if exit code unequal zero
             if exit_code != 0:
                 raise Exception("GMRES did not converge.")
@@ -1061,10 +1084,28 @@ class FOM:
                 M=self.preconditioner["dual"],
                 x0=old_dual_solution,
                 tol=self.SOLVER_TOL,
-                maxiter=1e5,
-                restart=500,
+                maxiter=5e2,
+                restart=5e2,
                 callback=counter,
             )
+            
+            # if do not converge, first try with backup preconditioner
+            if exit_code != 0:
+                logging.info("GMRES did not converge. Try with backup preconditioner.")
+                counter_backup = gmres_counter()
+                dual_solution, exit_code = scipy.sparse.linalg.gmres(
+                    self.matrix["dual"]["system_matrix"],
+                    dual_rhs,
+                    M=self.preconditioner["dual_backup"],
+                    x0=dual_solution,
+                    tol=self.SOLVER_TOL,
+                    maxiter=2e2,
+                    restart=5000,
+                    callback=counter_backup,
+                )
+                if exit_code == 0:
+                    logging.info(f"Backup converged in {counter_backup.niter} iterations.")
+            
             # throw exepction if exit code unequal zero
             if exit_code != 0:
                 raise Exception("GMRES did not converge.")
