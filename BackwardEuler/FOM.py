@@ -603,7 +603,7 @@ class FOM:
             else:
                 # build preconditioner
                 # TODO: Dict with primal and dual preconditioner
-                logging.debug("build ilu preconditioner")
+                logging.debug("build preconditioner")
                 
                 preconditioner_matrix = {}
                 self.preconditioner = {}
@@ -724,7 +724,7 @@ class FOM:
         return matrix.tocsr()
 
     def save_time(self, computation_time):
-        pattern = r"time_goal_" + self.goal + r"\d{6}\.npz"
+        pattern = r"time_goal_" + self.goal + "_" + r"\d{6}\.npz"
         files = os.listdir(self.SAVE_DIR)
         files = [
             self.SAVE_DIR + f
@@ -755,7 +755,7 @@ class FOM:
                 )
                 return
 
-        file_name = "results/time_goal_" + self.goal + str(len(files)).zfill(6) + ".npz"
+        file_name = "results/time_goal_" + self.goal + "_" + str(len(files)).zfill(6) + ".npz"
         np.savez(
             file_name,
             time=computation_time,
@@ -764,7 +764,7 @@ class FOM:
         )
 
     def load_time(self):
-        pattern = r"time_goal_" + self.goal + r"\d{6}\.npz"
+        pattern = r"time_goal_" + self.goal + "_" + r"\d{6}\.npz"
 
         # check if self.SAVE_DIR exists
         if not os.path.exists(self.SAVE_DIR):
@@ -798,7 +798,7 @@ class FOM:
         raise Exception("No time data available.")
 
     def save_solution(self, solution_type="primal"):
-        pattern = r"solution_" + solution_type + "_goal_" + self.goal + r"_\d{6}\.npz"
+        pattern = r"solution_" + solution_type + "_goal_" + self.goal + "_" + r"\d{6}\.npz"
         files = os.listdir(self.SAVE_DIR)
         files = [
             self.SAVE_DIR + f
@@ -836,6 +836,7 @@ class FOM:
             + solution_type
             + "_goal_"
             + self.goal
+            + "_"
             + str(len(files)).zfill(6)
             + ".npz"
         )
@@ -849,7 +850,7 @@ class FOM:
         print(f"Saved as {file_name}")
 
     def load_solution(self, solution_type="primal"):
-        pattern = r"solution_" + solution_type + "_goal_" + self.goal + r"_\d{6}\.npz"
+        pattern = r"solution_" + solution_type + "_goal_" + self.goal + "_" + r"\d{6}\.npz"
 
         # check if self.SAVE_DIR exists
         if not os.path.exists(self.SAVE_DIR):
