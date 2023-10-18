@@ -66,7 +66,7 @@ class FOM:
         self.mesh = None
         self.MESH_REFINEMENTS = 1
         if self.problem_name == "Mandel":
-            self.mesh = RectangleMesh(Point(0.0, 0.0), Point(100.0, 20.0), 5 * 16, 16)
+            self.mesh = RectangleMesh(Point(0.0, 0.0), Point(100.0, 20.0), self.MESH_REFINEMENTS * 5 * 16, self.MESH_REFINEMENTS * 16)
             self.dim = self.mesh.geometry().dim()
 
             # plt.figure(figsize=(50,21))
@@ -790,7 +790,7 @@ class FOM:
         raise Exception("No time data available.")
 
     def save_solution(self, solution_type="primal"):
-        pattern = r"solution_" + solution_type + "_goal_" + self.goal + r"\d{6}\.npz"
+        pattern = r"solution_" + solution_type + "_goal_" + self.goal + r"_\d{6}\.npz"
         files = os.listdir(self.SAVE_DIR)
         files = [
             self.SAVE_DIR + f
@@ -804,6 +804,8 @@ class FOM:
                 self.T,
                 self.problem_name,
                 *[float(x) for x in self.problem.__dict__.values()],
+                self.MESH_REFINEMENTS,
+                self.direct_solve,
             ]
         )
 
@@ -838,7 +840,7 @@ class FOM:
         print(f"Saved as {file_name}")
 
     def load_solution(self, solution_type="primal"):
-        pattern = r"solution_" + solution_type + "_goal_" + self.goal + r"\d{6}\.npz"
+        pattern = r"solution_" + solution_type + "_goal_" + self.goal + r"_\d{6}\.npz"
 
         # check if self.SAVE_DIR exists
         if not os.path.exists(self.SAVE_DIR):
@@ -858,6 +860,8 @@ class FOM:
                 self.T,
                 self.problem_name,
                 *[float(x) for x in self.problem.__dict__.values()],
+                self.MESH_REFINEMENTS,
+                self.direct_solve,
             ]
         )
 
@@ -958,7 +962,7 @@ class FOM:
                 rhs,
                 M=self.preconditioner["primal"],
                 x0=old_solution,
-                tol=1e-10,
+                tol=1e-8,
                 maxiter=5e4,
                 restart=500,
                 callback=counter,
@@ -1045,7 +1049,7 @@ class FOM:
                 dual_rhs,
                 M=self.preconditioner["dual"],
                 x0=old_dual_solution,
-                tol=1e-10,
+                tol=1e-8,
                 maxiter=5e4,
                 restart=500,
                 callback=counter,
