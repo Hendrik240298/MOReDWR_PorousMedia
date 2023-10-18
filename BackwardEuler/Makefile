@@ -6,10 +6,10 @@ format:
 run:
 	python3 main_iROM.py
 
-make iROM: 
+iROM: 
 	python3 main_iROM.py
 
-make ROM:
+ROM:
 	python3 main_ROM.py
 
 condor:
@@ -23,5 +23,5 @@ uml:
 	pyreverse -o png iROM.py
 	mv classes.png iROM.png
 
-make eval:
+eval:
 	python3 evaluate_iROM.py
