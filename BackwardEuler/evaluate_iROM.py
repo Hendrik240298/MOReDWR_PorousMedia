@@ -112,7 +112,7 @@ fom.solve_dual(force_recompute=False)
 fom.solve_functional_trajectory()
 # fom.plot_bottom_solution()
 
-REL_ERROR_TOLERANCES = [0.1e-2, 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
+REL_ERROR_TOLERANCES = [1e-2] #, 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
 
 result_matrix = np.zeros((len(REL_ERROR_TOLERANCES), 6), dtype=object)
 
