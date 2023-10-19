@@ -68,7 +68,7 @@ class FOM:
         print(f"Problem name: {self.problem_name}")
 
         self.mesh = None
-        self.MESH_REFINEMENTS = 2
+        self.MESH_REFINEMENTS = 3
         if self.problem_name == "Mandel":
             self.mesh = RectangleMesh(
                 Point(0.0, 0.0),
@@ -594,7 +594,7 @@ class FOM:
             ) + scipy.sparse.diags(self.boundary_dof_vector)
 
             self.direct_solve = True
-            if self.MESH_REFINEMENTS > 0:
+            if self.MESH_REFINEMENTS > 1:
                 self.direct_solve = False
 
             # iterative solver tolerance
@@ -618,7 +618,6 @@ class FOM:
                 preconditioner_matrix = {}
                 self.preconditioner = {}
 
-                
                 E = {}
                 D = {}
                 E["primal"] = scipy.sparse.tril(self.matrix["primal"]["system_matrix"], k=-1)
@@ -639,7 +638,6 @@ class FOM:
                     1.0 / self.matrix["dual"]["system_matrix"].diagonal()
                 ).tocsr()
 
-
                 preconditioner_x = {}
                 # jacobi
                 preconditioner_x["primal"] = lambda x: D_inv["primal"].dot(x)
@@ -658,25 +656,31 @@ class FOM:
                 # SOR preconditioner
                 omega = 0.5
                 preconditioner_SOR = {}
-                preconditioner_SOR["primal"] = (1/omega * (D["primal"] + omega * E["primal"])).tocsr()
-                preconditioner_SOR["dual"] = (1/omega * (D["dual"] + omega * E["dual"])).tocsr()
+                preconditioner_SOR["primal"] = (
+                    1 / omega * (D["primal"] + omega * E["primal"])
+                ).tocsr()
+                preconditioner_SOR["dual"] = (1 / omega * (D["dual"] + omega * E["dual"])).tocsr()
 
-                preconditioner_SOR_x = {}                
-                preconditioner_SOR_x["primal"] = lambda x: scipy.sparse.linalg.spsolve_triangular(preconditioner_SOR["primal"], x)
-                preconditioner_SOR_x["dual"] = lambda x: scipy.sparse.linalg.spsolve_triangular(preconditioner_SOR["dual"], x)
-
+                preconditioner_SOR_x = {}
+                preconditioner_SOR_x["primal"] = lambda x: scipy.sparse.linalg.spsolve_triangular(
+                    preconditioner_SOR["primal"], x
+                )
+                preconditioner_SOR_x["dual"] = lambda x: scipy.sparse.linalg.spsolve_triangular(
+                    preconditioner_SOR["dual"], x
+                )
 
                 self.preconditioner["primal_SOR"] = scipy.sparse.linalg.LinearOperator(
                     self.matrix["primal"]["system_matrix"].shape, preconditioner_SOR_x["primal"]
                 )
                 self.preconditioner["dual_SOR"] = scipy.sparse.linalg.LinearOperator(
                     self.matrix["dual"]["system_matrix"].shape, preconditioner_SOR_x["dual"]
-                )                
+                )
 
                 # AMG preconditioner
                 ml = {}
                 ml["primal"] = pyamg.ruge_stuben_solver(self.matrix["primal"]["system_matrix"])
-                ml["dual"] = pyamg.smoothed_aggregation_solver(self.matrix["dual"]["system_matrix"]) # pyamg.ruge_stuben_solver(self.matrix["dual"]["system_matrix"])
+                # pyamg.ruge_stuben_solver(self.matrix["dual"]["system_matrix"])
+                ml["dual"] = pyamg.smoothed_aggregation_solver(self.matrix["dual"]["system_matrix"])
 
                 print(ml["primal"])
                 print(ml["dual"])
@@ -741,17 +745,27 @@ class FOM:
         self.SAVE_DIR = "results/"
 
     def set_sub_matrix(self, matrix, sub_matrix, block):
+        
         matrix = matrix.tolil()
         sub_matrix = sub_matrix.tolil()
 
         if block == "top-left":
-            matrix[: self.dofs["displacement"], : self.dofs["displacement"]] = sub_matrix
+            for i in range(self.dofs["displacement"]):
+                # logging.debug(f"row {i} of {self.dofs['displacement']}")
+                matrix[i, : self.dofs["displacement"]] = sub_matrix[i, :]
+            # matrix[: self.dofs["displacement"], : self.dofs["displacement"]] = sub_matrix
         elif block == "top-right":
-            matrix[: self.dofs["displacement"], self.dofs["displacement"] :] = sub_matrix
+            for i in range(self.dofs["displacement"]):
+                 matrix[i, self.dofs["displacement"] :] = sub_matrix[i, :]
+            # matrix[: self.dofs["displacement"], self.dofs["displacement"] :] = sub_matrix
         elif block == "bottom-left":
-            matrix[self.dofs["displacement"] :, : self.dofs["displacement"]] = sub_matrix
+            for i in range(self.dofs["displacement"]):
+                matrix[self.dofs["displacement"] + i, : self.dofs["displacement"]] = sub_matrix[i, :]
+            # matrix[self.dofs["displacement"] :, : self.dofs["displacement"]] = sub_matrix
         elif block == "bottom-right":
-            matrix[self.dofs["displacement"] :, self.dofs["displacement"] :] = sub_matrix
+            for i in range(self.dofs["displacement"]):
+                matrix[self.dofs["displacement"] + i, self.dofs["displacement"] :] = sub_matrix[i, :]
+            # matrix[self.dofs["displacement"] :, self.dofs["displacement"] :] = sub_matrix
         else:
             raise NotImplementedError(f"Block {block} does not exist.")
 
