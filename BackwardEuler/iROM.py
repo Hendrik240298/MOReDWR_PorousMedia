@@ -1046,7 +1046,7 @@ class iROM:
             
         # DEBUG by QR
         # logging.debug("Solving primal time steps by QR")
-        Q, R, P = scipy.linalg.qr(self.matrix["primal"]["system_matrix"], pivoting=True) #, mode="economic")
+        # Q, R, P = scipy.linalg.qr(self.matrix["primal"]["system_matrix"], pivoting=True) #, mode="economic")
         
         rhs = self.matrix["primal"]["rhs_matrix"].dot(old_solution) + np.concatenate(
                 (
