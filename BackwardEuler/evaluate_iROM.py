@@ -1,5 +1,7 @@
 import time
 from dataclasses import dataclass
+import os
+import re
 
 import dolfin
 
@@ -8,6 +10,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 from dolfin import *
 from tabulate import tabulate
+
+
+import logging
+# configure logger
+logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
+)
 
 from FOM import FOM
 from iROM import iROM
@@ -74,14 +83,14 @@ t = 0.0
 # end time
 T = 5.0e6
 # time step size
-dt = 1000  # 5.e6/20  # 1000.0
+dt = 1000.0  # 5.e6/20  # 1000.0
 
 n_timesteps = int(T / dt)
 # dt = T / n_timesteps
 
 # ----------- ROM parameters -----------
 REL_ERROR_TOL = 0.1e-2
-MAX_ITERATIONS = 100  # 1000
+MAX_ITERATIONS = 300  # 1000
 MIN_ITERATIONS = 20
 PARENT_SLAB_SIZE = int(n_timesteps / 1)
 TOTAL_ENERGY = {
@@ -112,10 +121,67 @@ fom.solve_dual(force_recompute=False)
 fom.solve_functional_trajectory()
 # fom.plot_bottom_solution()
 
-REL_ERROR_TOLERANCES = [1e-2] #, 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
+# [0.1e-2 , 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
+REL_ERROR_TOLERANCES = [0.1e-2 , 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
 
 result_matrix = np.zeros((len(REL_ERROR_TOLERANCES), 6), dtype=object)
 
+PLOTTING = False
+def save_for_plot(ROM, FOM):
+    pattern = r"plot_data_goal_" + ROM.fom.goal + "_" + r"\d{6}\.npz"
+    files = os.listdir(ROM.fom.SAVE_DIR)
+    files = [
+        ROM.fom.SAVE_DIR + f
+        for f in files
+        if os.path.isfile(os.path.join(ROM.fom.SAVE_DIR, f)) and re.match(pattern, f)
+    ]
+    
+    parameters = np.array(
+        [
+            FOM.dt,
+            FOM.T,
+            FOM.problem_name,
+            FOM.MESH_REFINEMENTS,
+            FOM.direct_solve,
+            FOM.SOLVER_TOL,
+            ROM.REL_ERROR_TOL,
+        ]
+    )
+    
+    for file in files:
+        tmp = np.load(file, allow_pickle=True)
+        if np.array_equal(parameters, tmp["parameters"]):
+            np.savez(
+                file,
+                functional=ROM.fom.functional,
+                iterations_infos=ROM.iterations_infos,
+                REL_ERROR_TOL=ROM.REL_ERROR_TOL,
+                parent_slabs=ROM.parent_slabs,
+                goal=ROM.fom.goal,
+                parameters=parameters,
+                compression=True,
+            )
+            print(f"Overwrite {file}")
+            return
+
+    file_name = (
+        "results/plot_data_goal_"
+        + ROM.fom.goal
+        + "_"
+        + str(len(files)).zfill(6)
+        + ".npz"
+    )
+    np.savez(
+        file_name,
+        functional=ROM.fom.functional,
+        iterations_infos=ROM.iterations_infos,
+        REL_ERROR_TOL=ROM.REL_ERROR_TOL,
+        parent_slabs=ROM.parent_slabs,
+        goal=ROM.fom.goal,
+        parameters=parameters,
+        compression=True,
+    )
+    print(f"Saved as {file_name}")
 
 for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
     print("########################################## ")
@@ -146,6 +212,9 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
     rom.solve_functional_trajectory()
     if fom.problem_name == "Mandel":
         rom.plot_bottom_solution()
+
+    # ----------- ROM save -----------
+    save_for_plot(rom, fom)
 
     # ----------- Results -----------
     time_FOM = fom.load_time()
@@ -192,9 +261,10 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
     result_matrix[i, 4] = effectivity
     if fom.goal == "mean":
         # indicator index
-        result_matrix[i, 5] = true_abs_error / estimated_abs_error
+        result_matrix[i, 5] = true_abs_error / estimatd_abs_error
 
-    rom.plots_for_paper()
+    if PLOTTING:
+        rom.plots_for_paper()
 
 header_legend = [
     "relative error [%]",
