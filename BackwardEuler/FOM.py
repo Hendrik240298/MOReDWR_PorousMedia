@@ -597,6 +597,7 @@ class FOM:
             if self.MESH_REFINEMENTS > 0:
                 self.direct_solve = False
 
+            # iterative solver tolerance
             self.SOLVER_TOL = 0.0 if self.direct_solve else 5.0e-8
 
             if self.direct_solve:
@@ -1007,8 +1008,8 @@ class FOM:
                 M=self.preconditioner["primal"],
                 x0=old_solution,
                 tol=self.SOLVER_TOL,
-                maxiter=500,
-                restart=500,
+                maxiter=1000,
+                restart=1000,
                 callback=counter,
             )
 
@@ -1108,8 +1109,8 @@ class FOM:
                 M=self.preconditioner["dual"],
                 x0=old_dual_solution,
                 tol=self.SOLVER_TOL,
-                maxiter=500,
-                restart=500,
+                maxiter=1000,
+                restart=1000,
                 callback=counter,
             )
 
