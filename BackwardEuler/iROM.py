@@ -1,5 +1,6 @@
 """ ------------ IMPLEMENTATION of ROM ------------
 """
+import logging
 import math
 import os
 import re
@@ -17,6 +18,9 @@ from matplotlib.ticker import FormatStrFormatter, MaxNLocator
 from petsc4py import PETSc
 from slepc4py import SLEPc
 from tqdm import tqdm
+
+# configure logger
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s", datefmt='%H:%M:%S')
 
 
 class iROM:
@@ -525,6 +529,7 @@ class iROM:
 
                 # compute the number of POD modes to be kept
                 r = self.POD[type][quantity]["basis"].shape[1]
+                # r = self.POD[type][quantity]["basis"].shape[1] + 1 if self.POD[type][quantity]["basis"].shape[1] > 20 else self.POD[type][quantity]["basis"].shape[1]
                 while (
                     np.dot(S_k[0:r], S_k[0:r])
                     <= self.POD[type][quantity]["energy"] * self.POD[type][quantity]["TOL_ENERGY"]
@@ -1034,16 +1039,40 @@ class iROM:
         self.relative_errors = self.errors / (self.errors + self.functional + 1e-20)
 
     def solve_primal_time_step_slab(self, old_solution):
-        return scipy.linalg.lu_solve(
-            (self.lu_primal, self.piv_primal),
-            self.matrix["primal"]["rhs_matrix"].dot(old_solution)
-            + np.concatenate(
+        if np.isnan(old_solution).any():
+            print("old solution is nan")
+        elif np.isinf(old_solution).any():
+            print("old solution is inf")
+            
+        # DEBUG by QR
+        # logging.debug("Solving primal time steps by QR")
+        Q, R, P = scipy.linalg.qr(self.matrix["primal"]["system_matrix"], pivoting=True) #, mode="economic")
+        
+        rhs = self.matrix["primal"]["rhs_matrix"].dot(old_solution) + np.concatenate(
                 (
                     self.vector["primal"]["traction"],
                     np.zeros((self.POD["primal"]["pressure"]["basis"].shape[1],)),
                 )
-            ),
+            )
+        
+        # rhs_permuted = np.take(rhs, P)
+        # x_permuted = scipy.linalg.solve_triangular(R, np.dot(Q.T,rhs_permuted))
+        # x = np.zeros_like(x_permuted)
+        # np.put(x, P, x_permuted)
+        
+        # logging.debug(f"residuum: {np.linalg.norm(self.matrix['primal']['system_matrix'].dot(x) - rhs)}")
+        
+        # return x
+        # END DEBUG
+        
+        x = scipy.linalg.lu_solve(
+            (self.lu_primal, self.piv_primal),
+            rhs,
         )
+        
+        # logging.debug(f"residuum: {np.linalg.norm(self.matrix['primal']['system_matrix'].dot(x) - rhs)}")
+        
+        return x
 
     def solve_dual_time_step_slab(self, old_solution):
         dual_rhs = self.matrix["dual"]["rhs_matrix"].dot(old_solution)
@@ -1091,6 +1120,12 @@ class iROM:
             self.parent_slabs[index_parent_slab]["end"],
         ):
             n = i - self.parent_slabs[index_parent_slab]["start"]
+
+            if np.isnan(old_solution).any():
+                logging.error(f"old solution at n = {n} is nan at {np.argwhere(np.isnan(old_solution))}")
+            elif np.isinf(old_solution).any():
+                logging.error(f"old solution at n = {n}  is inf")            
+
             old_solution = self.solve_primal_time_step_slab(old_solution)
             # old_solution = self.parent_slabs[index_parent_slab]["solution"]["primal"][:, n]
             self.parent_slabs[index_parent_slab]["solution"]["primal"]["displacement"][
@@ -1446,7 +1481,7 @@ class iROM:
                 plot_investigation = True
 
                 if plot_investigation:
-                    print(f"Error in iter {iteration}: {estimate['slab_relative_error']:.5}")
+                    logging.info(f"Error in iter {iteration}: {estimate['slab_relative_error']:.5} with basis sizes: {self.POD['primal']['displacement']['basis'].shape[1]}+{self.POD['primal']['pressure']['basis'].shape[1]} / {self.POD['dual']['displacement']['basis'].shape[1]} + {self.POD['dual']['pressure']['basis'].shape[1]}")
                     self.iterations_infos[index_ps]["error"].append(estimate["slab_relative_error"])
                     self.iterations_infos[index_ps]["POD_size"]["primal"]["displacement"].append(
                         self.POD["primal"]["displacement"]["basis"].shape[1]
