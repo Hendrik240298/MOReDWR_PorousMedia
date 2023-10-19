@@ -1,36 +1,41 @@
-from tqdm import tqdm
-from petsc4py import PETSc
-from mumps import DMumpsContext
-from mpi4py import MPI
-from dolfin import *
-import scipy
-import rich.table
-import rich.console
-import petsc4py
-import numpy as np
-import matplotlib.pyplot as plt
-from multiprocessing import Pool
 import logging
 import math
 import os
 import random
 import re
 import time
+from multiprocessing import Pool
 
+import matplotlib.pyplot as plt
+import numpy as np
+import petsc4py
 import pyamg
+import rich.console
+import rich.table
+import scipy
+from dolfin import *
+from mpi4py import MPI
+from mumps import DMumpsContext
+from petsc4py import PETSc
+from tqdm import tqdm
 
 # configure logger
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 
-## GMRES callback, c.f. https://stackoverflow.com/questions/33512081/getting-the-number-of-iterations-of-scipys-gmres-iterative-method
+# GMRES callback, c.f.
+# https://stackoverflow.com/questions/33512081/getting-the-number-of-iterations-of-scipys-gmres-iterative-method
+
+
 class gmres_counter(object):
     def __init__(self, disp=False):
         self._disp = disp
         self.niter = 0
+
     def __call__(self, rk=None):
         self.niter += 1
         if self._disp:
-            print('iter %3i\trk = %s' % (self.niter, str(rk)))
+            print("iter %3i\trk = %s" % (self.niter, str(rk)))
+
 
 class FOM:
     # constructor
@@ -63,9 +68,14 @@ class FOM:
         print(f"Problem name: {self.problem_name}")
 
         self.mesh = None
-        self.MESH_REFINEMENTS = 1
+        self.MESH_REFINEMENTS = 2
         if self.problem_name == "Mandel":
-            self.mesh = RectangleMesh(Point(0.0, 0.0), Point(100.0, 20.0), self.MESH_REFINEMENTS * 5 * 16, self.MESH_REFINEMENTS * 16)
+            self.mesh = RectangleMesh(
+                Point(0.0, 0.0),
+                Point(100.0, 20.0),
+                self.MESH_REFINEMENTS * 5 * 16,
+                self.MESH_REFINEMENTS * 16,
+            )
             self.dim = self.mesh.geometry().dim()
 
             # plt.figure(figsize=(50,21))
@@ -587,7 +597,7 @@ class FOM:
             if self.MESH_REFINEMENTS > 0:
                 self.direct_solve = False
 
-            self.SOLVER_TOL = 0.0 if self.direct_solve else 1.e-8
+            self.SOLVER_TOL = 0.0 if self.direct_solve else 5.0e-8
 
             if self.direct_solve:
                 logging.debug("factorize primal system matrix with factorized")
@@ -603,37 +613,37 @@ class FOM:
                 # build preconditioner
                 # TODO: Dict with primal and dual preconditioner
                 logging.debug("build preconditioner")
-                
+
                 preconditioner_matrix = {}
                 self.preconditioner = {}
 
-                omega = 0.5
+                
                 E = {}
                 D = {}
                 E["primal"] = scipy.sparse.tril(self.matrix["primal"]["system_matrix"], k=-1)
-                D["primal"] = scipy.sparse.diags(self.matrix["primal"]["system_matrix"].diagonal()).tocsr()
+                D["primal"] = scipy.sparse.diags(
+                    self.matrix["primal"]["system_matrix"].diagonal()
+                ).tocsr()
 
+                E["dual"] = scipy.sparse.tril(self.matrix["dual"]["system_matrix"], k=-1)
+                D["dual"] = scipy.sparse.diags(
+                    self.matrix["dual"]["system_matrix"].diagonal()
+                ).tocsr()
 
                 D_inv = {}
-                D_inv["primal"] = scipy.sparse.diags(1.0 / self.matrix["primal"]["system_matrix"].diagonal()).tocsr()
-                D_inv["dual"] = scipy.sparse.diags(1.0 / self.matrix["dual"]["system_matrix"].diagonal()).tocsr()
-                
-                # preconditioner_matrix["primal"] = (1/omega * (D + omega * E)).tocsr()
-                # preconditioner_matrix["dual"] = scipy.sparse.diags(
-                #     self.matrix["dual"]["system_matrix"].diagonal()
-                # ).tocsr()
-                
+                D_inv["primal"] = scipy.sparse.diags(
+                    1.0 / self.matrix["primal"]["system_matrix"].diagonal()
+                ).tocsr()
+                D_inv["dual"] = scipy.sparse.diags(
+                    1.0 / self.matrix["dual"]["system_matrix"].diagonal()
+                ).tocsr()
 
-                # preconditioner_x["primal"] = lambda x: scipy.sparse.linalg.spsolve_triangular(preconditioner_matrix["primal"], x)
-                # preconditioner_x["dual"] = lambda x: scipy.sparse.linalg.spsolve_triangular(preconditioner_matrix["dual"], x)
-                
-                
+
                 preconditioner_x = {}
                 # jacobi
                 preconditioner_x["primal"] = lambda x: D_inv["primal"].dot(x)
                 preconditioner_x["dual"] = lambda x: D_inv["dual"].dot(x)
-                
-                
+
                 # self.primal_ilu = scipy.sparse.linalg.spilu(self.matrix["primal"]["system_matrix"].tocsc(),
                 #                                             drop_tol=1e-12,
                 #                                             fill_factor=1000)
@@ -644,25 +654,42 @@ class FOM:
                     self.matrix["dual"]["system_matrix"].shape, preconditioner_x["dual"]
                 )
 
+                # SOR preconditioner
+                omega = 0.5
+                preconditioner_SOR = {}
+                preconditioner_SOR["primal"] = (1/omega * (D["primal"] + omega * E["primal"])).tocsr()
+                preconditioner_SOR["dual"] = (1/omega * (D["dual"] + omega * E["dual"])).tocsr()
+
+                preconditioner_SOR_x = {}                
+                preconditioner_SOR_x["primal"] = lambda x: scipy.sparse.linalg.spsolve_triangular(preconditioner_SOR["primal"], x)
+                preconditioner_SOR_x["dual"] = lambda x: scipy.sparse.linalg.spsolve_triangular(preconditioner_SOR["dual"], x)
+
+
+                self.preconditioner["primal_SOR"] = scipy.sparse.linalg.LinearOperator(
+                    self.matrix["primal"]["system_matrix"].shape, preconditioner_SOR_x["primal"]
+                )
+                self.preconditioner["dual_SOR"] = scipy.sparse.linalg.LinearOperator(
+                    self.matrix["dual"]["system_matrix"].shape, preconditioner_SOR_x["dual"]
+                )                
+
+                # AMG preconditioner
                 ml = {}
                 ml["primal"] = pyamg.ruge_stuben_solver(self.matrix["primal"]["system_matrix"])
-                ml["dual"] = pyamg.ruge_stuben_solver(self.matrix["dual"]["system_matrix"])
-                
+                ml["dual"] = pyamg.smoothed_aggregation_solver(self.matrix["dual"]["system_matrix"]) # pyamg.ruge_stuben_solver(self.matrix["dual"]["system_matrix"])
+
                 print(ml["primal"])
                 print(ml["dual"])
-                
+
                 ml_x = {}
-                ml_x["primal"] = lambda x: ml["primal"].solve(x, tol=1e-5)
-                ml_x["dual"] = lambda x: ml["dual"].solve(x, tol=1e-5)
-                
+                ml_x["primal"] = lambda x: ml["primal"].solve(x, tol=1e-14)
+                ml_x["dual"] = lambda x: ml["dual"].solve(x, tol=1e-14)
+
                 self.preconditioner["primal_backup"] = scipy.sparse.linalg.LinearOperator(
                     self.matrix["primal"]["system_matrix"].shape, ml_x["primal"]
                 )
                 self.preconditioner["dual_backup"] = scipy.sparse.linalg.LinearOperator(
                     self.matrix["dual"]["system_matrix"].shape, ml_x["dual"]
                 )
-                       
-
 
             # build rhs matrix
             self.matrix["primal"]["rhs_matrix"] = scipy.sparse.csr_matrix(
@@ -729,7 +756,6 @@ class FOM:
 
         return matrix.tocsr()
 
-
     def save_time(self, computation_time):
         pattern = r"time_goal_" + self.goal + "_" + r"\d{6}\.npz"
         files = os.listdir(self.SAVE_DIR)
@@ -747,7 +773,7 @@ class FOM:
                 *[float(x) for x in self.problem.__dict__.values()],
                 self.MESH_REFINEMENTS,
                 self.direct_solve,
-                self.SOLVER_TOL, 
+                self.SOLVER_TOL,
             ]
         )
 
@@ -793,7 +819,7 @@ class FOM:
                 *[float(x) for x in self.problem.__dict__.values()],
                 self.MESH_REFINEMENTS,
                 self.direct_solve,
-                self.SOLVER_TOL, 
+                self.SOLVER_TOL,
             ]
         )
 
@@ -821,7 +847,7 @@ class FOM:
                 *[float(x) for x in self.problem.__dict__.values()],
                 self.MESH_REFINEMENTS,
                 self.direct_solve,
-                self.SOLVER_TOL, 
+                self.SOLVER_TOL,
             ]
         )
 
@@ -879,7 +905,7 @@ class FOM:
                 *[float(x) for x in self.problem.__dict__.values()],
                 self.MESH_REFINEMENTS,
                 self.direct_solve,
-                self.SOLVER_TOL, 
+                self.SOLVER_TOL,
             ]
         )
 
@@ -888,7 +914,7 @@ class FOM:
             if np.array_equal(parameters, tmp["parameters"]):
                 self.Y[solution_type]["displacement"] = tmp["displacement"]
                 self.Y[solution_type]["pressure"] = tmp["pressure"]
-                print(f"Loaded {file}")
+                logging.info(f"Loaded {file}")
                 return True
         return False
 
@@ -968,7 +994,7 @@ class FOM:
 
         # apply homogeneous Dirichlet BC to right hand side
         rhs = rhs * (1.0 - self.boundary_dof_vector)
-        
+
         # solve primal system
         if self.direct_solve:
             solution = self.solve_factorized_primal(rhs)
@@ -981,27 +1007,27 @@ class FOM:
                 M=self.preconditioner["primal"],
                 x0=old_solution,
                 tol=self.SOLVER_TOL,
-                maxiter=5e2,
-                restart=5e2,
+                maxiter=500,
+                restart=500,
                 callback=counter,
             )
-            
+
             if exit_code != 0:
-                logging.info("GMRES did not converge. Try with backup preconditioner.")   
-                counter_backup = gmres_counter()  
+                logging.info("Primal GMRES did not converge. Try with backup preconditioner.")
+                counter_backup = gmres_counter(disp=True)
                 solution, exit_code = scipy.sparse.linalg.gmres(
                     self.matrix["primal"]["system_matrix"],
                     rhs,
                     M=self.preconditioner["primal_backup"],
                     x0=solution,
                     tol=self.SOLVER_TOL,
-                    maxiter=5e2,
-                    restart=5e2,
+                    maxiter=200,
+                    restart=200,
                     callback=counter_backup,
-                )                
+                )
                 if exit_code == 0:
                     logging.info(f"Backup converged in {counter_backup.niter} iterations.")
-                            
+
             # throw exepction if exit code unequal zero
             if exit_code != 0:
                 raise Exception("GMRES did not converge.")
@@ -1070,8 +1096,6 @@ class FOM:
         # apply homogeneous Dirichlet BC to right hand side
         dual_rhs *= 1.0 - self.boundary_dof_vector
 
-
-
         # solve dual system
         if self.direct_solve:
             dual_solution = self.solve_factorized_dual(dual_rhs)
@@ -1084,36 +1108,36 @@ class FOM:
                 M=self.preconditioner["dual"],
                 x0=old_dual_solution,
                 tol=self.SOLVER_TOL,
-                maxiter=5e2,
-                restart=5e2,
+                maxiter=500,
+                restart=500,
                 callback=counter,
             )
-            
+
             # if do not converge, first try with backup preconditioner
             if exit_code != 0:
-                logging.info("GMRES did not converge. Try with backup preconditioner.")
-                counter_backup = gmres_counter()
+                logging.info("Dual GMRES did not converge. Try with backup preconditioner.")
+                counter_backup = gmres_counter(disp=True)
                 dual_solution, exit_code = scipy.sparse.linalg.gmres(
                     self.matrix["dual"]["system_matrix"],
                     dual_rhs,
                     M=self.preconditioner["dual_backup"],
                     x0=dual_solution,
                     tol=self.SOLVER_TOL,
-                    maxiter=2e2,
-                    restart=5000,
+                    maxiter=500,
+                    restart=500,
                     callback=counter_backup,
                 )
                 if exit_code == 0:
                     logging.info(f"Backup converged in {counter_backup.niter} iterations.")
-            
+
             # throw exepction if exit code unequal zero
             if exit_code != 0:
                 raise Exception("GMRES did not converge.")
-        
+
         # compare solution and solution_iter
         # logging.debug(f"Differnce solution:  {np.linalg.norm(dual_solution-dual_solution_iter)}")
         # logging.debug(f"Difference relative: {np.linalg.norm(dual_solution-dual_solution_iter)/np.linalg.norm(dual_solution)}")
-        
+
         # # plot dual solution
         # u, p = self.U_n.split()
         # self.U_n.vector().set_local(
