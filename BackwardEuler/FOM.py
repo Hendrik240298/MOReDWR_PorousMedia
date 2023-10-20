@@ -55,17 +55,18 @@ class FOM:
             assert goal in ["point"], "goal must be 'point' for Footing problem"
         self.goal = goal
 
+
         # for each variable of the object problem, add this variable to the FOM
         for key, value in problem.__dict__.items():
             setattr(self, key, value)
 
         self.time_points = np.arange(self.t, self.T + self.dt, self.dt)
-        print(f"FIRST/LATEST TIME POINT:    {self.time_points[0]}/{self.time_points[-1]}")
-        print(f"NUMBER OF TIME POINTS:      {self.time_points.shape[0]}")
+        logging.info(f"FIRST/LATEST TIME POINT:    {self.time_points[0]}/{self.time_points[-1]}")
+        logging.info(f"NUMBER OF TIME POINTS:      {self.time_points.shape[0]}")
 
         # get class name of problem
         self.problem_name = problem.__class__.__name__
-        print(f"Problem name: {self.problem_name}")
+        logging.info(f"Problem name: {self.problem_name}")
 
         self.mesh = None
         self.MESH_REFINEMENTS = 3
@@ -111,7 +112,7 @@ class FOM:
             "time": self.time_points.shape[0],
         }
 
-        print(f"DOFS: {self.dofs}")
+        logging.info(f"DOFS: {self.dofs}")
 
         if self.problem_name == "Mandel":
             left = CompiledSubDomain("near(x[0], 0.) && on_boundary")
@@ -759,11 +760,11 @@ class FOM:
                  matrix[i, self.dofs["displacement"] :] = sub_matrix[i, :]
             # matrix[: self.dofs["displacement"], self.dofs["displacement"] :] = sub_matrix
         elif block == "bottom-left":
-            for i in range(self.dofs["displacement"]):
+            for i in range(self.dofs["pressure"]):
                 matrix[self.dofs["displacement"] + i, : self.dofs["displacement"]] = sub_matrix[i, :]
             # matrix[self.dofs["displacement"] :, : self.dofs["displacement"]] = sub_matrix
         elif block == "bottom-right":
-            for i in range(self.dofs["displacement"]):
+            for i in range(self.dofs["pressure"]):
                 matrix[self.dofs["displacement"] + i, self.dofs["displacement"] :] = sub_matrix[i, :]
             # matrix[self.dofs["displacement"] :, self.dofs["displacement"] :] = sub_matrix
         else:
