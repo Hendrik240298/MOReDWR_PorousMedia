@@ -233,7 +233,7 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
     true_error = np.abs(J_h - J_r)  # np.abs(np.sum(J_h_t-J_r_t))
     print("True error: ", true_error)
     true_abs_error = None
-    if fom.goal == "mean":
+    if fom.goal == "mean" or fom.goal == "point":
         true_abs_error = np.sum(np.abs(J_h_t - J_r_t))
     estimated_error = np.abs(np.sum(temporal_interval_error))
     print("Estimated error: ", estimated_error)
@@ -259,7 +259,8 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
     )
     # effectivity index
     result_matrix[i, 4] = effectivity
-    if fom.goal == "mean":
+
+    if fom.goal == "mean" or fom.goal == "point":
         # indicator index
         result_matrix[i, 5] = true_abs_error / estimatd_abs_error
 
