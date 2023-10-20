@@ -25,3 +25,6 @@ uml:
 
 eval:
 	python3 evaluate_iROM.py
+
+plot:
+	python3 plot_after_eval.py
