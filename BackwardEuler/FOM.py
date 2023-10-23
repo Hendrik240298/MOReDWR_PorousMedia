@@ -686,10 +686,10 @@ class FOM:
                 # print(ml["dual"])
 
                 ml_x = {}
-                ml_x["primal_RS"] = lambda x: ml["primal_RS"].solve(x, tol=1e-14)
-                ml_x["dual_RS"] = lambda x: ml["dual_RS"].solve(x, tol=1e-14)
-                ml_x["primal_SA"] = lambda x: ml["primal_SA"].solve(x, tol=1e-14)
-                ml_x["dual_SA"] = lambda x: ml["dual_SA"].solve(x, tol=1e-14)
+                ml_x["primal_RS"] = lambda x: ml["primal_RS"].solve(x, tol=1e-10)
+                ml_x["dual_RS"] = lambda x: ml["dual_RS"].solve(x, tol=1e-10)
+                ml_x["primal_SA"] = lambda x: ml["primal_SA"].solve(x, tol=1e-10)
+                ml_x["dual_SA"] = lambda x: ml["dual_SA"].solve(x, tol=1e-10)
 
                 # sanity check if preconditioner and backup preconditioner differ
                 if self.config["FOM"]["solver"]["preconditioner"] == self.config["FOM"]["solver"]["preconditioner_backup"]:
