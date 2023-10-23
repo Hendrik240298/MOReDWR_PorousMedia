@@ -18,3 +18,5 @@ BackwardEuler/run-fencis.out.0
 run-fencis.*
 BackwardEuler/test_yaml.py
 *.pkl
+BackwardEuler/config_short_jacobi.yaml
+BackwardEuler/config_short_AMG_SA.yaml
