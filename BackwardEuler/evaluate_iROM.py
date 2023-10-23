@@ -95,12 +95,12 @@ MIN_ITERATIONS = 20
 PARENT_SLAB_SIZE = int(n_timesteps / 1)
 TOTAL_ENERGY = {
     "primal": {
-        "displacement": 1 - 1e-6,
-        "pressure": 1 - 1e-10,
+        "displacement": 1 - 1e-7,
+        "pressure": 1 - 1e-11,
     },
     "dual": {
-        "displacement": 1 - 1e-8,
-        "pressure": 1 - 1e-8,
+        "displacement": 1 - 1e-9,
+        "pressure": 1 - 1e-9,
     },
 }
 
@@ -122,7 +122,7 @@ fom.solve_functional_trajectory()
 # fom.plot_bottom_solution()
 
 # [0.1e-2 , 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
-REL_ERROR_TOLERANCES = [0.1e-2 , 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
+REL_ERROR_TOLERANCES = [0.5e-2 , 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
 
 result_matrix = np.zeros((len(REL_ERROR_TOLERANCES), 6), dtype=object)
 
@@ -153,7 +153,10 @@ def save_for_plot(ROM, FOM):
         if np.array_equal(parameters, tmp["parameters"]):
             np.savez(
                 file,
-                functional=ROM.fom.functional,
+                functional_FOM=ROM.fom.functional,
+                functional_values_FOM=ROM.fom.functional_values,
+                functional=ROM.functional,
+                functional_values=ROM.functional_values,
                 iterations_infos=ROM.iterations_infos,
                 REL_ERROR_TOL=ROM.REL_ERROR_TOL,
                 parent_slabs=ROM.parent_slabs,
@@ -172,8 +175,11 @@ def save_for_plot(ROM, FOM):
         + ".npz"
     )
     np.savez(
-        file_name,
-        functional=ROM.fom.functional,
+        file,
+        functional_FOM=ROM.fom.functional,
+        functional_values_FOM=ROM.fom.functional_values,
+        functional=ROM.functional,
+        functional_values=ROM.functional_values,
         iterations_infos=ROM.iterations_infos,
         REL_ERROR_TOL=ROM.REL_ERROR_TOL,
         parent_slabs=ROM.parent_slabs,
@@ -262,7 +268,7 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
 
     if fom.goal == "mean" or fom.goal == "point":
         # indicator index
-        result_matrix[i, 5] = true_abs_error / estimatd_abs_error
+        result_matrix[i, 5] = true_abs_error / estimated_abs_error
 
     if PLOTTING:
         rom.plots_for_paper()
