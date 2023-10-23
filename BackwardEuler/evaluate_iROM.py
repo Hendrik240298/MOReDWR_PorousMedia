@@ -115,20 +115,20 @@ MIN_ITERATIONS = 20
 PARENT_SLAB_SIZE = int(n_timesteps / 1)
 TOTAL_ENERGY = {
     "primal": {
-        "displacement": 1 - 1e-7,
-        "pressure": 1 - 1e-11,
+        "displacement": 1 - config["ROM"]["total_energy"]["primal"]["displacement"],
+        "pressure": 1 - config["ROM"]["total_energy"]["primal"]["pressure"],
     },
     "dual": {
-        "displacement": 1 - 1e-9,
-        "pressure": 1 - 1e-9,
+        "displacement": 1 - config["ROM"]["total_energy"]["dual"]["displacement"],
+        "pressure": 1 - config["ROM"]["total_energy"]["dual"]["pressure"],
     },
 }
 
 # ----------- FOM -----------
 # fom = FOM(t, T, dt, Mandel(), goal="mean")
-fom = FOM(t, T, dt, Footing(), goal="point")
+fom = FOM(config, Footing())
 start_time_fom = time.time()
-recomputed_primal_fom = fom.solve_primal(force_recompute=False)
+recomputed_primal_fom = fom.solve_primal(force_recompute=config["FOM"]["force_recompute"]["primal"])
 end_time_fom = time.time()
 time_FOM = end_time_fom - start_time_fom
 
@@ -136,13 +136,13 @@ if recomputed_primal_fom:
     # save FOM time to file
     fom.save_time(time_FOM)
 
-fom.solve_dual(force_recompute=False)
+fom.solve_dual(force_recompute=config["FOM"]["force_recompute"]["dual"])
 
 fom.solve_functional_trajectory()
 # fom.plot_bottom_solution()
 
 # [0.1e-2 , 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
-REL_ERROR_TOLERANCES = [0.5e-2 , 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
+REL_ERROR_TOLERANCES = [20.e-2] #[0.5e-2 , 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
 
 result_matrix = np.zeros((len(REL_ERROR_TOLERANCES), 6), dtype=object)
 
@@ -217,8 +217,8 @@ for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
     rom = iROM(
         fom,
         REL_ERROR_TOL=relative_error,
-        MAX_ITERATIONS=MAX_ITERATIONS,
-        MIN_ITERATIONS=MIN_ITERATIONS,
+        MAX_ITERATIONS=config["ROM"]["max_iterations"],
+        MIN_ITERATIONS=config["ROM"]["min_iterations"],
         PARENT_SLAB_SIZE=PARENT_SLAB_SIZE,
         TOTAL_ENERGY=TOTAL_ENERGY,
         PLOTTING=False,

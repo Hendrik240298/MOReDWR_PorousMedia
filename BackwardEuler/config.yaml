@@ -21,18 +21,22 @@ FOM:
   start_time: 0.0
   end_time: 5.0e+6
   delta_t: 1000.0
-  force_recompute: False
+  force_recompute:
+    primal: True
+    dual: False
   mesh_refinement: 2  # factor of uniform refinements
   solver: # iterative solver (used if mesh_refinement > 1)
     tolerance: 5.e-8
     preconditioner: 
-      type: "jacobi" # choices: "jacobi", "SOR", "AMG_RG", "AMG_SA"
+      type: "AMG_SA" # choices: "jacobi", "SOR", "AMG_RS", "AMG_SA"
       max_iter: 1000
       restart: 1000      
     preconditioner_backup:  
-      type: "AMG_SA" # choices: "jacobi", "SOR", "AMG_RG", "AMG_SA"
+      type: "jacobi" # choices: "jacobi", "SOR", "AMG_RS", "AMG_SA"
       max_iter: 200
       restart: 200  
 
+# other settings for infrastructure of code
 INFRASTRUCTURE:
   safe_directory: "results/"
+  name: "AMG_SA" # currently only for solver results to differentiate between different runs

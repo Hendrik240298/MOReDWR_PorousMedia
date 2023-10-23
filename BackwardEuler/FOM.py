@@ -5,6 +5,7 @@ import random
 import re
 import time
 from multiprocessing import Pool
+import pickle
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -39,13 +40,15 @@ class gmres_counter(object):
 
 class FOM:
     # constructor
-    def __init__(self, t, T, dt, problem, quantities=["displacement", "pressure"], goal="mean"):
-        self.t = t
-        self.T = T
-        self.dt = dt
+    def __init__(self, config, problem, quantities=["displacement", "pressure"]):
+        self.config = config
+        self.t = self.config["FOM"]["start_time"]
+        self.T = self.config["FOM"]["end_time"]
+        self.dt = self.config["FOM"]["delta_t"]
         self.problem = problem
         # ORDERING IS IMPORTANT FOR ROM!
         self.quantities = quantities
+        goal = self.config["Problem"]["goal"]
         if problem.__class__.__name__ == "Mandel":
             assert goal in [
                 "mean",
@@ -69,7 +72,7 @@ class FOM:
         logging.info(f"Problem name: {self.problem_name}")
 
         self.mesh = None
-        self.MESH_REFINEMENTS = 2
+        self.MESH_REFINEMENTS = self.config["FOM"]["mesh_refinement"]
         if self.problem_name == "Mandel":
             self.mesh = RectangleMesh(
                 Point(0.0, 0.0),
@@ -595,11 +598,11 @@ class FOM:
             ) + scipy.sparse.diags(self.boundary_dof_vector)
 
             self.direct_solve = True
-            if self.MESH_REFINEMENTS > 1:
+            if self.MESH_REFINEMENTS > 0:
                 self.direct_solve = False
 
             # iterative solver tolerance
-            self.SOLVER_TOL = 0.0 if self.direct_solve else 5.0e-8
+            self.SOLVER_TOL = 0.0 if self.direct_solve else self.config["FOM"]["solver"]["tolerance"]
 
             if self.direct_solve:
                 logging.debug("factorize primal system matrix with factorized")
@@ -647,13 +650,7 @@ class FOM:
                 # self.primal_ilu = scipy.sparse.linalg.spilu(self.matrix["primal"]["system_matrix"].tocsc(),
                 #                                             drop_tol=1e-12,
                 #                                             fill_factor=1000)
-                self.preconditioner["primal"] = scipy.sparse.linalg.LinearOperator(
-                    self.matrix["primal"]["system_matrix"].shape, preconditioner_x["primal"]
-                )
-                self.preconditioner["dual"] = scipy.sparse.linalg.LinearOperator(
-                    self.matrix["dual"]["system_matrix"].shape, preconditioner_x["dual"]
-                )
-
+                
                 # SOR preconditioner
                 omega = 0.5
                 preconditioner_SOR = {}
@@ -679,23 +676,88 @@ class FOM:
 
                 # AMG preconditioner
                 ml = {}
-                ml["primal"] = pyamg.ruge_stuben_solver(self.matrix["primal"]["system_matrix"])
+                ml["primal_RS"] = pyamg.ruge_stuben_solver(self.matrix["primal"]["system_matrix"])
                 # pyamg.ruge_stuben_solver(self.matrix["dual"]["system_matrix"])
-                ml["dual"] = pyamg.smoothed_aggregation_solver(self.matrix["dual"]["system_matrix"])
+                ml["dual_RS"] = pyamg.ruge_stuben_solver(self.matrix["dual"]["system_matrix"])
+                ml["primal_SA"] = pyamg.smoothed_aggregation_solver(self.matrix["primal"]["system_matrix"])
+                ml["dual_SA"] = pyamg.smoothed_aggregation_solver(self.matrix["dual"]["system_matrix"])
 
-                print(ml["primal"])
-                print(ml["dual"])
+                # print(ml["primal"])
+                # print(ml["dual"])
 
                 ml_x = {}
-                ml_x["primal"] = lambda x: ml["primal"].solve(x, tol=1e-14)
-                ml_x["dual"] = lambda x: ml["dual"].solve(x, tol=1e-14)
+                ml_x["primal_RS"] = lambda x: ml["primal_RS"].solve(x, tol=1e-14)
+                ml_x["dual_RS"] = lambda x: ml["dual_RS"].solve(x, tol=1e-14)
+                ml_x["primal_SA"] = lambda x: ml["primal_SA"].solve(x, tol=1e-14)
+                ml_x["dual_SA"] = lambda x: ml["dual_SA"].solve(x, tol=1e-14)
 
-                self.preconditioner["primal_backup"] = scipy.sparse.linalg.LinearOperator(
-                    self.matrix["primal"]["system_matrix"].shape, ml_x["primal"]
-                )
-                self.preconditioner["dual_backup"] = scipy.sparse.linalg.LinearOperator(
-                    self.matrix["dual"]["system_matrix"].shape, ml_x["dual"]
-                )
+                # sanity check if preconditioner and backup preconditioner differ
+                if self.config["FOM"]["solver"]["preconditioner"] == self.config["FOM"]["solver"]["preconditioner_backup"]:
+                    raise ValueError("Preconditioner and backup preconditioner are the same.")
+
+                # choose preconditioner between  "jacobi", "SOR", "AMG_RS", "AMG_SA"
+                # jacobi
+                if self.config["FOM"]["solver"]["preconditioner"]["type"] == "jacobi":
+                    self.preconditioner["primal"] = scipy.sparse.linalg.LinearOperator(
+                        self.matrix["primal"]["system_matrix"].shape, preconditioner_x["primal"]
+                    )
+                    self.preconditioner["dual"] = scipy.sparse.linalg.LinearOperator(
+                        self.matrix["dual"]["system_matrix"].shape, preconditioner_x["dual"]
+                    )
+                # Ruge-Stuben AMG
+                elif self.config["FOM"]["solver"]["preconditioner"]["type"] == "AMG_RS":
+                    self.preconditioner["primal"] = scipy.sparse.linalg.LinearOperator(
+                        self.matrix["primal"]["system_matrix"].shape, ml_x["primal_RS"]
+                    )
+                    self.preconditioner["dual"] = scipy.sparse.linalg.LinearOperator(
+                        self.matrix["dual"]["system_matrix"].shape, ml_x["dual_RS"]
+                    )
+                # Smoothed Aggregation AMG
+                elif self.config["FOM"]["solver"]["preconditioner"]["type"] == "AMG_SA":
+                    self.preconditioner["primal"] = scipy.sparse.linalg.LinearOperator(
+                        self.matrix["primal"]["system_matrix"].shape, ml_x["primal_SA"]
+                    )
+                    self.preconditioner["dual"] = scipy.sparse.linalg.LinearOperator(
+                        self.matrix["dual"]["system_matrix"].shape, ml_x["dual_SA"]
+                    )
+                else:
+                    raise ValueError("Preconditioner type does not exist.")
+                
+                # choose backup preconditioner between  "jacobi", "SOR", "AMG_RS", "AMG_SA"
+                # jacobi
+                if self.config["FOM"]["solver"]["preconditioner_backup"]["type"] == "jacobi":
+                    self.preconditioner["primal_backup"] = scipy.sparse.linalg.LinearOperator(
+                        self.matrix["primal"]["system_matrix"].shape, preconditioner_x["primal"]
+                    )
+                    self.preconditioner["dual_backup"] = scipy.sparse.linalg.LinearOperator(
+                        self.matrix["dual"]["system_matrix"].shape, preconditioner_x["dual"]
+                    )
+                # Ruge-Stuben AMG
+                elif self.config["FOM"]["solver"]["preconditioner_backup"]["type"] == "AMG_RS":
+                    self.preconditioner["primal_backup"] = scipy.sparse.linalg.LinearOperator(
+                        self.matrix["primal"]["system_matrix"].shape, ml_x["primal_RS"]
+                    )
+                    self.preconditioner["dual_backup"] = scipy.sparse.linalg.LinearOperator(
+                        self.matrix["dual"]["system_matrix"].shape, ml_x["dual_RS"]
+                    )
+                # Smoothed Aggregation AMG
+                elif self.config["FOM"]["solver"]["preconditioner_backup"]["type"] == "AMG_SA":
+                    self.preconditioner["primal_backup"] = scipy.sparse.linalg.LinearOperator(
+                        self.matrix["primal"]["system_matrix"].shape, ml_x["primal_SA"]
+                    )
+                    self.preconditioner["dual_backup"] = scipy.sparse.linalg.LinearOperator(
+                        self.matrix["dual"]["system_matrix"].shape, ml_x["dual_SA"]
+                    )
+                else:
+                    raise ValueError("Backup preconditioner type does not exist.")
+
+                logging.info(f"Preconditioner: {self.config['FOM']['solver']['preconditioner']['type']}")
+                logging.info(f"Backup preconditioner: {self.config['FOM']['solver']['preconditioner_backup']['type']}")
+
+                self.solver_results = {
+                    "iterations": [],
+                    "wall_time": [],
+                }
 
             # build rhs matrix
             self.matrix["primal"]["rhs_matrix"] = scipy.sparse.csr_matrix(
@@ -743,7 +805,7 @@ class FOM:
         self.functional_values = np.zeros((self.dofs["time"] - 1,))
 
         # IO data
-        self.SAVE_DIR = "results/"
+        self.SAVE_DIR = self.config["INFRASTRUCTURE"]["safe_directory"]
 
     def set_sub_matrix(self, matrix, sub_matrix, block):
         
@@ -1017,16 +1079,21 @@ class FOM:
         else:
             # GMRES with jacobi preconditioner
             counter = gmres_counter()
+            start_time = time.time()
             solution, exit_code = scipy.sparse.linalg.gmres(
                 self.matrix["primal"]["system_matrix"],
                 rhs,
                 M=self.preconditioner["primal"],
                 x0=old_solution,
                 tol=self.SOLVER_TOL,
-                maxiter=1000,
-                restart=1000,
+                maxiter=self.config["FOM"]["solver"]["preconditioner"]["max_iter"],
+                restart=self.config["FOM"]["solver"]["preconditioner"]["restart"],
                 callback=counter,
             )
+            end_time = time.time() - start_time
+            self.solver_results["iterations"].append(counter.niter)
+            self.solver_results["wall_time"].append(end_time)
+
 
             if exit_code != 0:
                 logging.info("Primal GMRES did not converge. Try with backup preconditioner.")
@@ -1037,8 +1104,8 @@ class FOM:
                     M=self.preconditioner["primal_backup"],
                     x0=solution,
                     tol=self.SOLVER_TOL,
-                    maxiter=200,
-                    restart=200,
+                    maxiter=self.config["FOM"]["solver"]["preconditioner_backup"]["max_iter"],
+                    restart=self.config["FOM"]["solver"]["preconditioner_backup"]["restart"],
                     callback=counter_backup,
                 )
                 if exit_code == 0:
@@ -1080,6 +1147,10 @@ class FOM:
 
         self.save_solution(solution_type="primal")
         # self.save_vtk()
+        # save solver results 
+        if not self.direct_solve:
+            with open(self.SAVE_DIR + self.config["INFRASTRUCTURE"]["name"] + ".pkl", "wb") as f:
+                pickle.dump(self.solver_results, f)
         return True
 
     def solve_dual_time_step(self, z_u_nn_vector, z_p_nn_vector):
@@ -1124,8 +1195,8 @@ class FOM:
                 M=self.preconditioner["dual"],
                 x0=old_dual_solution,
                 tol=self.SOLVER_TOL,
-                maxiter=1000,
-                restart=1000,
+                maxiter=self.config["FOM"]["solver"]["preconditioner"]["max_iter"],
+                restart=self.config["FOM"]["solver"]["preconditioner"]["restart"],
                 callback=counter,
             )
 
@@ -1139,8 +1210,8 @@ class FOM:
                     M=self.preconditioner["dual_backup"],
                     x0=dual_solution,
                     tol=self.SOLVER_TOL,
-                    maxiter=500,
-                    restart=500,
+                    maxiter=self.config["FOM"]["solver"]["preconditioner_backup"]["max_iter"],
+                    restart=self.config["FOM"]["solver"]["preconditioner_backup"]["restart"],
                     callback=counter_backup,
                 )
                 if exit_code == 0:

@@ -17,3 +17,4 @@ BackwardEuler/run-fencis.log
 BackwardEuler/run-fencis.out.0
 run-fencis.*
 BackwardEuler/test_yaml.py
+*.pkl
