@@ -28,15 +28,15 @@ FOM:
   solver: # iterative solver (used if mesh_refinement > 1)
     tolerance: 5.e-8
     preconditioner: 
-      type: "AMG_SA" # choices: "jacobi", "SOR", "AMG_RS", "AMG_SA"
+      type: "jacobi" # choices: "jacobi", "SOR", "AMG_RS", "AMG_SA"
       max_iter: 1000
       restart: 1000      
     preconditioner_backup:  
-      type: "jacobi" # choices: "jacobi", "SOR", "AMG_RS", "AMG_SA"
+      type: "AMG_SA" # choices: "jacobi", "SOR", "AMG_RS", "AMG_SA"
       max_iter: 200
       restart: 200  
 
 # other settings for infrastructure of code
 INFRASTRUCTURE:
   safe_directory: "results/"
-  name: "AMG_SA" # currently only for solver results to differentiate between different runs
+  name: "standard" # currently only for solver results to differentiate between different runs
