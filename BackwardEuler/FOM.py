@@ -69,7 +69,7 @@ class FOM:
         logging.info(f"Problem name: {self.problem_name}")
 
         self.mesh = None
-        self.MESH_REFINEMENTS = 3
+        self.MESH_REFINEMENTS = 2
         if self.problem_name == "Mandel":
             self.mesh = RectangleMesh(
                 Point(0.0, 0.0),

@@ -84,11 +84,10 @@ SOLVER_TOL = 0.0 if direct_solve else 5.e-8
 # REL_ERROR_TOL = .5e-2
 
 
-REL_ERROR_TOLERANCES = [0.5e-2] #[0.5e-2 , 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
+REL_ERROR_TOLERANCES = [0.5e-2, 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
 
-
+pattern = r"plot_data_goal_" + goal + "_" + r"\d{6}\.npz"
 for i, REL_ERROR_TOL in enumerate(REL_ERROR_TOLERANCES):
-    pattern = r"plot_data_goal_" + goal + "_" + r"\d{6}\.npz"
     SAVE_DIR = "results/"
     # check if SAVE_DIR exists
     if not os.path.exists(SAVE_DIR):
@@ -212,7 +211,7 @@ for i, REL_ERROR_TOL in enumerate(REL_ERROR_TOLERANCES):
 
     # plt.show()
 
-    name = f"images/tol={REL_ERROR_TOL}_parent_slab={parent_slabs[0]['steps']}_goal_{goal}_POD_size.eps"
+    name = f"images/tol={REL_ERROR_TOL}_goal_{goal}_POD_size.eps"
     plt.savefig(name, format="eps")
     plt.clf()
 
@@ -234,9 +233,11 @@ for i, REL_ERROR_TOL in enumerate(REL_ERROR_TOLERANCES):
     )
     plt.xlabel("time")
     plt.ylabel("cost functional")
+    # logarithmic y axis
+    plt.yscale("log")
     plt.legend()
     plt.grid()
-    plt.show()
+    # plt.show()
     name = f"images/tol={REL_ERROR_TOL}_goal_{goal}_functional_over_time.eps"
     plt.savefig(name, format="eps")
     plt.clf()

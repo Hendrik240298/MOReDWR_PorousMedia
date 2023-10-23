@@ -2,6 +2,8 @@ import time
 from dataclasses import dataclass
 import os
 import re
+import argparse
+import yaml
 
 import dolfin
 
@@ -24,9 +26,25 @@ from iROM import iROM
 # ---------- FEniCS parameters ---------
 parameters["reorder_dofs_serial"] = False
 
+# ---------- Parameter file ------------
+
+parser = argparse.ArgumentParser(description="Input file to specify the problem.")
+parser.add_argument("yaml_config", nargs="?", help="Path/Name to the YAML config file")
+
+# parse the arguments
+args = parser.parse_args()
+
+# ATTENTION: No sanity check for yaml config exists yet!
+if args.yaml_config is None:
+    logging.info("No YAML config file was specified. Thus standard config 'config.yaml' is used.")
+    config_file = "config.yaml"
+else:
+    config_file = args.yaml_config
+
+with open(config_file, "r") as f:
+    config = yaml.safe_load(f)
+
 # ----------- FOM parameters -----------
-
-
 @dataclass
 class Mandel:
     # M_biot = Biot's constant
@@ -77,16 +95,18 @@ class Footing:
         1.0 - 2.0 * poisson_ratio_nu
     )
 
-
+# ----------- Time parameters -----------
 # start time
-t = 0.0
+t = config["FOM"]["start_time"] #0.0
 # end time
-T = 5.0e6
+T = config["FOM"]["end_time"] #5.0e6
 # time step size
-dt = 1000.0  # 5.e6/20  # 1000.0
+dt = config["FOM"]["delta_t"] #1000.0  # 5.e6/20  # 1000.0
 
 n_timesteps = int(T / dt)
 # dt = T / n_timesteps
+
+logging.debug(f"t: {t}, T: {T}, dt: {dt}")
 
 # ----------- ROM parameters -----------
 REL_ERROR_TOL = 0.1e-2
