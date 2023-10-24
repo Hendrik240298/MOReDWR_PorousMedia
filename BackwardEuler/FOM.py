@@ -598,7 +598,7 @@ class FOM:
             ) + scipy.sparse.diags(self.boundary_dof_vector)
 
             self.direct_solve = True
-            if self.MESH_REFINEMENTS > 0:
+            if self.MESH_REFINEMENTS > 1:
                 self.direct_solve = False
 
             # iterative solver tolerance
