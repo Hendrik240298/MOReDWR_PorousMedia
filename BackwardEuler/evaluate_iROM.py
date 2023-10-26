@@ -20,6 +20,69 @@ logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
 )
 
+def save_for_plot(ROM, FOM):
+    pattern = r"plot_data_goal_" + ROM.fom.goal + "_" + r"\d{6}\.npz"
+    files = os.listdir(ROM.fom.SAVE_DIR)
+    files = [
+        ROM.fom.SAVE_DIR + f
+        for f in files
+        if os.path.isfile(os.path.join(ROM.fom.SAVE_DIR, f)) and re.match(pattern, f)
+    ]
+    
+    parameters = np.array(
+        [
+            FOM.dt,
+            FOM.T,
+            FOM.problem_name,
+            FOM.MESH_REFINEMENTS,
+            FOM.direct_solve,
+            FOM.SOLVER_TOL,
+            ROM.REL_ERROR_TOL,
+        ]
+    )
+    
+    for file in files:
+        tmp = np.load(file, allow_pickle=True)
+        if np.array_equal(parameters, tmp["parameters"]):
+            np.savez(
+                file,
+                functional_FOM=ROM.fom.functional,
+                functional_values_FOM=ROM.fom.functional_values,
+                functional=ROM.functional,
+                functional_values=ROM.functional_values,
+                iterations_infos=ROM.iterations_infos,
+                REL_ERROR_TOL=ROM.REL_ERROR_TOL,
+                parent_slabs=ROM.parent_slabs,
+                goal=ROM.fom.goal,
+                parameters=parameters,
+                compression=True,
+            )
+            print(f"Overwrite {file}")
+            return
+
+    file_name = (
+        "results/plot_data_goal_"
+        + ROM.fom.goal
+        + "_"
+        + str(len(files)).zfill(6)
+        + ".npz"
+    )
+    np.savez(
+        file_name,
+        functional_FOM=ROM.fom.functional,
+        functional_values_FOM=ROM.fom.functional_values,
+        functional=ROM.functional,
+        functional_values=ROM.functional_values,
+        iterations_infos=ROM.iterations_infos,
+        REL_ERROR_TOL=ROM.REL_ERROR_TOL,
+        parent_slabs=ROM.parent_slabs,
+        goal=ROM.fom.goal,
+        parameters=parameters,
+        compression=True,
+    )
+    print(f"Saved as {file_name}")
+
+
 from FOM import FOM
 from iROM import iROM
 
@@ -37,7 +100,7 @@ args = parser.parse_args()
 # ATTENTION: No sanity check for yaml config exists yet!
 if args.yaml_config is None:
     logging.info("No YAML config file was specified. Thus standard config 'config.yaml' is used.")
-    config_file = "config.yaml"
+    config_file = "config/config.yaml"
 else:
     config_file = args.yaml_config
 
@@ -125,8 +188,13 @@ TOTAL_ENERGY = {
 }
 
 # ----------- FOM -----------
-# fom = FOM(t, T, dt, Mandel(), goal="mean")
-fom = FOM(config, Footing())
+if config["Problem"]["type"] == "Mandel":
+    fom = FOM(config, Mandel())
+elif config["Problem"]["type"] == "Footing":
+    fom = FOM(config, Footing())
+else:
+    raise ValueError(f"Problem type {config['Problem']['type']} not recognized")
+
 start_time_fom = time.time()
 recomputed_primal_fom = fom.solve_primal(force_recompute=config["FOM"]["force_recompute"]["primal"])
 end_time_fom = time.time()
@@ -142,72 +210,10 @@ fom.solve_functional_trajectory()
 # fom.plot_bottom_solution()
 
 # [0.1e-2 , 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
-REL_ERROR_TOLERANCES = [20.e-2] #[0.5e-2 , 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
+REL_ERROR_TOLERANCES = [0.5e-2, 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
+PLOTTING = False
 
 result_matrix = np.zeros((len(REL_ERROR_TOLERANCES), 6), dtype=object)
-
-PLOTTING = False
-def save_for_plot(ROM, FOM):
-    pattern = r"plot_data_goal_" + ROM.fom.goal + "_" + r"\d{6}\.npz"
-    files = os.listdir(ROM.fom.SAVE_DIR)
-    files = [
-        ROM.fom.SAVE_DIR + f
-        for f in files
-        if os.path.isfile(os.path.join(ROM.fom.SAVE_DIR, f)) and re.match(pattern, f)
-    ]
-    
-    parameters = np.array(
-        [
-            FOM.dt,
-            FOM.T,
-            FOM.problem_name,
-            FOM.MESH_REFINEMENTS,
-            FOM.direct_solve,
-            FOM.SOLVER_TOL,
-            ROM.REL_ERROR_TOL,
-        ]
-    )
-    
-    for file in files:
-        tmp = np.load(file, allow_pickle=True)
-        if np.array_equal(parameters, tmp["parameters"]):
-            np.savez(
-                file,
-                functional_FOM=ROM.fom.functional,
-                functional_values_FOM=ROM.fom.functional_values,
-                functional=ROM.functional,
-                functional_values=ROM.functional_values,
-                iterations_infos=ROM.iterations_infos,
-                REL_ERROR_TOL=ROM.REL_ERROR_TOL,
-                parent_slabs=ROM.parent_slabs,
-                goal=ROM.fom.goal,
-                parameters=parameters,
-                compression=True,
-            )
-            print(f"Overwrite {file}")
-            return
-
-    file_name = (
-        "results/plot_data_goal_"
-        + ROM.fom.goal
-        + "_"
-        + str(len(files)).zfill(6)
-        + ".npz"
-    )
-    np.savez(
-        file,
-        functional_FOM=ROM.fom.functional,
-        functional_values_FOM=ROM.fom.functional_values,
-        functional=ROM.functional,
-        functional_values=ROM.functional_values,
-        iterations_infos=ROM.iterations_infos,
-        REL_ERROR_TOL=ROM.REL_ERROR_TOL,
-        parent_slabs=ROM.parent_slabs,
-        goal=ROM.fom.goal,
-        parameters=parameters,
-        compression=True,
-    )
-    print(f"Saved as {file_name}")
 
 for i, relative_error in enumerate(REL_ERROR_TOLERANCES):
     print("########################################## ")
@@ -302,16 +308,21 @@ header_legend = [
     "indicator",
 ]
 
+print(result_matrix)
 
 table = tabulate(
-    result_matrix, headers=header_legend, showindex=100 * np.array(REL_ERROR_TOLERANCES)
+    result_matrix, 
+    headers=header_legend, 
+    showindex=True #100 * np.array(REL_ERROR_TOLERANCES)
 )
 print(table)
 
 table = tabulate(
     result_matrix,
     headers=header_legend,
-    showindex=100 * np.array(REL_ERROR_TOLERANCES),
+    showindex=True, #100 * np.array(REL_ERROR_TOLERANCES),
     tablefmt="latex",
 )
 print(table)
+
+
