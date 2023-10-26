@@ -58,6 +58,8 @@ class FOM:
             assert goal in ["point"], "goal must be 'point' for Footing problem"
         self.goal = goal
 
+        self.direct_solve = True
+        self.SOLVER_TOL = 0.0 
 
         # for each variable of the object problem, add this variable to the FOM
         for key, value in problem.__dict__.items():
@@ -597,12 +599,12 @@ class FOM:
                 (1.0 - self.boundary_dof_vector).reshape(-1, 1)
             ) + scipy.sparse.diags(self.boundary_dof_vector)
 
-            self.direct_solve = True
             if self.MESH_REFINEMENTS > 1:
                 self.direct_solve = False
 
             # iterative solver tolerance
-            self.SOLVER_TOL = 0.0 if self.direct_solve else self.config["FOM"]["solver"]["tolerance"]
+            if not self.direct_solve:
+                self.SOLVER_TOL = self.config["FOM"]["solver"]["tolerance"]
 
             if self.direct_solve:
                 logging.debug("factorize primal system matrix with factorized")
