@@ -1,7 +1,10 @@
-import time
-from dataclasses import dataclass
+from iROM import iROM
+from FOM import FOM
+import logging
 import os
 import re
+import time
+from dataclasses import dataclass
 
 import dolfin
 
@@ -11,15 +14,11 @@ import numpy as np
 from dolfin import *
 from tabulate import tabulate
 
-
-import logging
 # configure logger
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
 )
 
-from FOM import FOM
-from iROM import iROM
 
 @dataclass
 class Footing:
@@ -45,6 +44,7 @@ class Footing:
     lame_coefficient_lambda: float = (2.0 * poisson_ratio_nu * lame_coefficient_mu) / (
         1.0 - 2.0 * poisson_ratio_nu
     )
+
 
 # start time
 t = 0.0
@@ -79,10 +79,10 @@ problem_name = "Footing"
 goal = "point"
 MESH_REFINEMENTS = 2
 direct_solve = False if MESH_REFINEMENTS > 1 else True
-SOLVER_TOL = 0.0 if direct_solve else 5.e-8 
-REL_ERROR_TOLERANCES = [0.5e-2, 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
+SOLVER_TOL = 0.0 if direct_solve else 5.0e-8
+REL_ERROR_TOLERANCES = [0.5e-2, 1.0e-2, 2.0e-2, 5.0e-2, 10.0e-2, 20.0e-2]
 
-# # Mandel 
+# # Mandel
 # problem_name = "Mandel"
 # goal ="mean"
 # MESH_REFINEMENTS = 1
@@ -92,7 +92,6 @@ REL_ERROR_TOLERANCES = [0.5e-2, 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
 
 
 # REL_ERROR_TOL = .5e-2
-
 
 
 pattern = r"plot_data_goal_" + goal + "_" + r"\d{6}\.npz"
@@ -128,10 +127,10 @@ for i, REL_ERROR_TOL in enumerate(REL_ERROR_TOLERANCES):
         logging.info(parameters)
         logging.info(tmp["parameters"])
         if np.array_equal(parameters, tmp["parameters"]):
-            functional_FOM=tmp["functional"]
-            functional_values_FOM=tmp["functional_values_FOM"]
-            functional_ROM=tmp["functional"]
-            functional_values_ROM=tmp["functional_values"]
+            functional_FOM = tmp["functional"]
+            functional_values_FOM = tmp["functional_values_FOM"]
+            functional_ROM = tmp["functional"]
+            functional_values_ROM = tmp["functional_values"]
             iterations_infos = tmp["iterations_infos"]
             REL_ERROR_TOL = tmp["REL_ERROR_TOL"]
             parent_slabs = tmp["parent_slabs"]
@@ -142,19 +141,15 @@ for i, REL_ERROR_TOL in enumerate(REL_ERROR_TOLERANCES):
     if not exists:
         raise ValueError("No file found with the given parameters")
 
-
     # ---------------------------------
     # Error over iterations
     # ---------------------------------
 
     fom_cf = functional_FOM  # np.sum(fom.functional_values)
 
-
     # print("iteration infos:", iterations_infos)
-    error_cf = np.abs(fom_cf - np.array(iterations_infos[0]["functional"])) / np.abs(
-        fom_cf
-    )
-    
+    error_cf = np.abs(fom_cf - np.array(iterations_infos[0]["functional"])) / np.abs(fom_cf)
+
     print(error_cf.shape)
     print(np.array(iterations_infos[0]["error"]).shape)
 
@@ -228,7 +223,6 @@ for i, REL_ERROR_TOL in enumerate(REL_ERROR_TOLERANCES):
     name = f"images/tol={REL_ERROR_TOL}_goal_{goal}_POD_size.eps"
     plt.savefig(name, format="eps")
     plt.clf()
-
 
     # ---------------------------------
     # Functional over time

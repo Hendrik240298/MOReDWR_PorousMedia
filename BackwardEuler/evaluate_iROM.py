@@ -1,24 +1,26 @@
-import time
-from dataclasses import dataclass
+from iROM import iROM
+from FOM import FOM
+import argparse
+import logging
 import os
 import re
-import argparse
-import yaml
+import time
+from dataclasses import dataclass
 
 import dolfin
 
 # from mshr import *
 import matplotlib.pyplot as plt
 import numpy as np
+import yaml
 from dolfin import *
 from tabulate import tabulate
 
-
-import logging
 # configure logger
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
 )
+
 
 def save_for_plot(ROM, FOM):
     pattern = r"plot_data_goal_" + ROM.fom.goal + "_" + r"\d{6}\.npz"
@@ -28,7 +30,7 @@ def save_for_plot(ROM, FOM):
         for f in files
         if os.path.isfile(os.path.join(ROM.fom.SAVE_DIR, f)) and re.match(pattern, f)
     ]
-    
+
     parameters = np.array(
         [
             FOM.dt,
@@ -40,7 +42,7 @@ def save_for_plot(ROM, FOM):
             ROM.REL_ERROR_TOL,
         ]
     )
-    
+
     for file in files:
         tmp = np.load(file, allow_pickle=True)
         if np.array_equal(parameters, tmp["parameters"]):
@@ -60,13 +62,7 @@ def save_for_plot(ROM, FOM):
             print(f"Overwrite {file}")
             return
 
-    file_name = (
-        "results/plot_data_goal_"
-        + ROM.fom.goal
-        + "_"
-        + str(len(files)).zfill(6)
-        + ".npz"
-    )
+    file_name = "results/plot_data_goal_" + ROM.fom.goal + "_" + str(len(files)).zfill(6) + ".npz"
     np.savez(
         file_name,
         functional_FOM=ROM.fom.functional,
@@ -82,9 +78,6 @@ def save_for_plot(ROM, FOM):
     )
     print(f"Saved as {file_name}")
 
-
-from FOM import FOM
-from iROM import iROM
 
 # ---------- FEniCS parameters ---------
 parameters["reorder_dofs_serial"] = False
@@ -108,6 +101,8 @@ with open(config_file, "r") as f:
     config = yaml.safe_load(f)
 
 # ----------- FOM parameters -----------
+
+
 @dataclass
 class Mandel:
     # M_biot = Biot's constant
@@ -158,13 +153,14 @@ class Footing:
         1.0 - 2.0 * poisson_ratio_nu
     )
 
+
 # ----------- Time parameters -----------
 # start time
-t = config["FOM"]["start_time"] #0.0
+t = config["FOM"]["start_time"]  # 0.0
 # end time
-T = config["FOM"]["end_time"] #5.0e6
+T = config["FOM"]["end_time"]  # 5.0e6
 # time step size
-dt = config["FOM"]["delta_t"] #1000.0  # 5.e6/20  # 1000.0
+dt = config["FOM"]["delta_t"]  # 1000.0  # 5.e6/20  # 1000.0
 
 n_timesteps = int(T / dt)
 # dt = T / n_timesteps
@@ -210,7 +206,7 @@ fom.solve_functional_trajectory()
 # fom.plot_bottom_solution()
 
 # [0.1e-2 , 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
-REL_ERROR_TOLERANCES = [0.5e-2, 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
+REL_ERROR_TOLERANCES = [0.5e-2, 1.0e-2, 2.0e-2, 5.0e-2, 10.0e-2, 20.0e-2]
 PLOTTING = False
 
 result_matrix = np.zeros((len(REL_ERROR_TOLERANCES), 6), dtype=object)
@@ -311,18 +307,14 @@ header_legend = [
 print(result_matrix)
 
 table = tabulate(
-    result_matrix, 
-    headers=header_legend, 
-    showindex=True #100 * np.array(REL_ERROR_TOLERANCES)
+    result_matrix, headers=header_legend, showindex=True  # 100 * np.array(REL_ERROR_TOLERANCES)
 )
 print(table)
 
 table = tabulate(
     result_matrix,
     headers=header_legend,
-    showindex=True, #100 * np.array(REL_ERROR_TOLERANCES),
+    showindex=True,  # 100 * np.array(REL_ERROR_TOLERANCES),
     tablefmt="latex",
 )
 print(table)
-
-

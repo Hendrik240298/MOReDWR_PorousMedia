@@ -1,11 +1,11 @@
 import logging
 import math
 import os
+import pickle
 import random
 import re
 import time
 from multiprocessing import Pool
-import pickle
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -59,7 +59,7 @@ class FOM:
         self.goal = goal
 
         self.direct_solve = True
-        self.SOLVER_TOL = 0.0 
+        self.SOLVER_TOL = 0.0
 
         # for each variable of the object problem, add this variable to the FOM
         for key, value in problem.__dict__.items():
@@ -652,7 +652,7 @@ class FOM:
                 # self.primal_ilu = scipy.sparse.linalg.spilu(self.matrix["primal"]["system_matrix"].tocsc(),
                 #                                             drop_tol=1e-12,
                 #                                             fill_factor=1000)
-                
+
                 # SOR preconditioner
                 omega = 0.5
                 preconditioner_SOR = {}
@@ -681,8 +681,12 @@ class FOM:
                 ml["primal_RS"] = pyamg.ruge_stuben_solver(self.matrix["primal"]["system_matrix"])
                 # pyamg.ruge_stuben_solver(self.matrix["dual"]["system_matrix"])
                 ml["dual_RS"] = pyamg.ruge_stuben_solver(self.matrix["dual"]["system_matrix"])
-                ml["primal_SA"] = pyamg.smoothed_aggregation_solver(self.matrix["primal"]["system_matrix"])
-                ml["dual_SA"] = pyamg.smoothed_aggregation_solver(self.matrix["dual"]["system_matrix"])
+                ml["primal_SA"] = pyamg.smoothed_aggregation_solver(
+                    self.matrix["primal"]["system_matrix"]
+                )
+                ml["dual_SA"] = pyamg.smoothed_aggregation_solver(
+                    self.matrix["dual"]["system_matrix"]
+                )
 
                 # print(ml["primal"])
                 # print(ml["dual"])
@@ -693,8 +697,12 @@ class FOM:
                 ml_x["primal_SA"] = lambda x: ml["primal_SA"].solve(x, tol=1e-10)
                 ml_x["dual_SA"] = lambda x: ml["dual_SA"].solve(x, tol=1e-10)
 
-                # sanity check if preconditioner and backup preconditioner differ
-                if self.config["FOM"]["solver"]["preconditioner"] == self.config["FOM"]["solver"]["preconditioner_backup"]:
+                # sanity check if preconditioner and backup preconditioner
+                # differ
+                if (
+                    self.config["FOM"]["solver"]["preconditioner"]
+                    == self.config["FOM"]["solver"]["preconditioner_backup"]
+                ):
                     raise ValueError("Preconditioner and backup preconditioner are the same.")
 
                 # choose preconditioner between  "jacobi", "SOR", "AMG_RS", "AMG_SA"
@@ -724,7 +732,7 @@ class FOM:
                     )
                 else:
                     raise ValueError("Preconditioner type does not exist.")
-                
+
                 # choose backup preconditioner between  "jacobi", "SOR", "AMG_RS", "AMG_SA"
                 # jacobi
                 if self.config["FOM"]["solver"]["preconditioner_backup"]["type"] == "jacobi":
@@ -753,8 +761,12 @@ class FOM:
                 else:
                     raise ValueError("Backup preconditioner type does not exist.")
 
-                logging.info(f"Preconditioner: {self.config['FOM']['solver']['preconditioner']['type']}")
-                logging.info(f"Backup preconditioner: {self.config['FOM']['solver']['preconditioner_backup']['type']}")
+                logging.info(
+                    f"Preconditioner: {self.config['FOM']['solver']['preconditioner']['type']}"
+                )
+                logging.info(
+                    f"Backup preconditioner: {self.config['FOM']['solver']['preconditioner_backup']['type']}"
+                )
 
                 self.solver_results = {
                     "iterations": [],
@@ -810,7 +822,6 @@ class FOM:
         self.SAVE_DIR = self.config["INFRASTRUCTURE"]["safe_directory"]
 
     def set_sub_matrix(self, matrix, sub_matrix, block):
-        
         matrix = matrix.tolil()
         sub_matrix = sub_matrix.tolil()
 
@@ -821,15 +832,19 @@ class FOM:
             # matrix[: self.dofs["displacement"], : self.dofs["displacement"]] = sub_matrix
         elif block == "top-right":
             for i in range(self.dofs["displacement"]):
-                 matrix[i, self.dofs["displacement"] :] = sub_matrix[i, :]
+                matrix[i, self.dofs["displacement"] :] = sub_matrix[i, :]
             # matrix[: self.dofs["displacement"], self.dofs["displacement"] :] = sub_matrix
         elif block == "bottom-left":
             for i in range(self.dofs["pressure"]):
-                matrix[self.dofs["displacement"] + i, : self.dofs["displacement"]] = sub_matrix[i, :]
+                matrix[self.dofs["displacement"] + i, : self.dofs["displacement"]] = sub_matrix[
+                    i, :
+                ]
             # matrix[self.dofs["displacement"] :, : self.dofs["displacement"]] = sub_matrix
         elif block == "bottom-right":
             for i in range(self.dofs["pressure"]):
-                matrix[self.dofs["displacement"] + i, self.dofs["displacement"] :] = sub_matrix[i, :]
+                matrix[self.dofs["displacement"] + i, self.dofs["displacement"] :] = sub_matrix[
+                    i, :
+                ]
             # matrix[self.dofs["displacement"] :, self.dofs["displacement"] :] = sub_matrix
         else:
             raise NotImplementedError(f"Block {block} does not exist.")
@@ -1096,7 +1111,6 @@ class FOM:
             self.solver_results["iterations"].append(counter.niter)
             self.solver_results["wall_time"].append(end_time)
 
-
             if exit_code != 0:
                 logging.info("Primal GMRES did not converge. Try with backup preconditioner.")
                 counter_backup = gmres_counter(disp=True)
@@ -1149,7 +1163,7 @@ class FOM:
 
         self.save_solution(solution_type="primal")
         # self.save_vtk()
-        # save solver results 
+        # save solver results
         if not self.direct_solve:
             with open(self.SAVE_DIR + self.config["INFRASTRUCTURE"]["name"] + ".pkl", "wb") as f:
                 pickle.dump(self.solver_results, f)

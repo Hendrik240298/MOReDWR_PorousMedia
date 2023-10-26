@@ -1,7 +1,9 @@
+import logging
 import pickle
+
 import matplotlib.pyplot as plt
 import numpy as np
-import logging
+
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
 )
@@ -18,7 +20,7 @@ with open("results/short_AMG_SA_benchmark.pkl", "rb") as f:
 jacobi["mean_wall_time"] = np.mean(jacobi["wall_time"])
 jacobi["mean_iterations"] = np.mean(jacobi["iterations"])
 
-# means AMG_SA  
+# means AMG_SA
 AMG_SA["mean_wall_time"] = np.mean(AMG_SA["wall_time"])
 AMG_SA["mean_iterations"] = np.mean(AMG_SA["iterations"])
 
