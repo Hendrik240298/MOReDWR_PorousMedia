@@ -129,6 +129,7 @@ class iROM:
                         },
                     },
                     "initial_condition": None,
+                    "pre_last_dual_solution": None,
                     "functional": np.zeros((PARENT_SLAB_SIZE,)),
                 }
             )
@@ -1430,6 +1431,43 @@ class iROM:
         )
         self.timings["enrichment"] += time.time() - execution_time
 
+    def enrich_dual_final_condition(self, index_parent_slab, dual_fom_steps):
+        """
+        >[!failure] The Problem
+        >In Mandel case (and also but not that bad in Footing), we get a very messed up error estimate if we only use the first $t=T$ FOM dual solution. We tested it also with the last $t=0$ dual solution and there the error estimate was perfect. However, in practice we do not know this FOM solution, since it would need the whole dual FOM solution process. 
+
+        >[!todo] The idea for workaround
+        > We somehow need to get a good proxy for the dual FOM solution at $t=0$ without computing the entire dual FOM. Thus, the idea is to replace the dual FOM by the dual ROM (which we already compute during the enrichment) and only calculate the last step $t=0$ with the FOM model. The first step is to do it only in the first iteration. However, I believe this will not be enough, and thus this enrichment should be performed in each iteration. This would increase the FOM solves per iteration from 2 to 3 but maybe also increases the prediction capability of the estimator a lot. In my opinion, a trade-off worth it.
+        """
+        
+        execution_time = time.time()
+
+        # enrich dual
+        last_dual_solution = self.parent_slabs[index_parent_slab]["pre_last_dual_solution"]
+
+        for i in range(dual_fom_steps):
+            new_dual_solution = self.fom.solve_dual_time_step(
+                last_dual_solution[: self.fom.dofs["displacement"]],
+                last_dual_solution[self.fom.dofs["displacement"] :],
+            )
+
+            for i, quantity in enumerate(self.fom.quantities):
+                self.iPOD(new_dual_solution[i], type="dual", quantity=quantity)
+            
+            last_dual_solution = np.concatenate(
+                (
+                    new_dual_solution[0],
+                    new_dual_solution[1],                   
+                )
+            )
+                            
+        self.update_matrices(matrix_type="dual")
+
+        # update estimate components
+        self.update_matrices(matrix_type="estimator")
+
+        self.timings["enrichment"] += time.time() - execution_time
+
     # relative error:
     # \sum_i {eta_i / (eta_i + J(u_r)_i)}
 
@@ -1523,13 +1561,39 @@ class iROM:
 
                     worst_index = estimate["i_max_abs"]  # estimate['i_max']
 
-                    if self.PLOTTING:
-                        print(
-                            f"Enrich for largest error @ (i={worst_index}, t={self.fom.time_points[worst_index + self.parent_slabs[index_ps]['start']]:.2}): {estimate['max_abs']:.5}"
+                    logging.debug(
+                        f"Enrich for largest error @ (i={worst_index}, t={self.fom.time_points[worst_index + self.parent_slabs[index_ps]['start']]:.2}): {estimate['max_abs']:.5}"
+                    )
+                        
+                    if iteration <= self.MIN_ITERATIONS:
+                        # project last - 1 dual solution before changing basis
+                        self.parent_slabs[index_ps]["pre_last_dual_solution"] = np.concatenate(
+                            (
+                                self.project_vector(
+                                    self.parent_slabs[index_ps]["solution"]["dual"]["displacement"][
+                                        :, self.fom.config["ROM"]["dual_FOM_steps_back"]
+                                    ],
+                                    type="dual",
+                                    quantity="displacement",
+                                ),
+                                self.project_vector(
+                                    self.parent_slabs[index_ps]["solution"]["dual"]["pressure"][
+                                        :, self.fom.config["ROM"]["dual_FOM_steps_back"]
+                                    ],
+                                    type="dual",
+                                    quantity="pressure",
+                                ),
+                            )
                         )
+                                            
                     self.enrich_parent_slab(index_ps, worst_index)
                     self.fom_solves += 2
 
+                    if iteration <= self.MIN_ITERATIONS:
+                        # enrich with last dual solution (t=0)
+                        self.enrich_dual_final_condition(index_ps, self.fom.config["ROM"]["dual_FOM_steps_back"])
+                        self.fom_solves += self.fom.config["ROM"]["dual_FOM_steps_back"]
+                    
                 iteration += 1
             iteration = 1
             print("\n")
