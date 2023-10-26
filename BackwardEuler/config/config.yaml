@@ -1,5 +1,7 @@
 # Problem settings
 Problem:
+  type: "Footing" # choices: "Mandel", "Footing"
+  # for goal: Mandel: "mean", Footing: "point"
   goal: "point"
 
 # ROM Settings
@@ -14,7 +16,9 @@ ROM:
       displacement: 1.e-9
       pressure: 1.e-9
   max_iterations: 300
-  min_iterations: 20
+  min_iterations: 8
+  # this is for dual t=0 solution workaround
+  dual_FOM_steps_back: 5
 
 # FOM settings
 FOM: 
@@ -22,7 +26,7 @@ FOM:
   end_time: 5.0e+6
   delta_t: 1000.0
   force_recompute:
-    primal: True
+    primal: False
     dual: False
   mesh_refinement: 2  # factor of uniform refinements
   solver: # iterative solver (used if mesh_refinement > 1)

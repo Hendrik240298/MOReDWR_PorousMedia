@@ -1,0 +1,46 @@
+# Problem settings
+Problem:
+  type: "Mandel" # choices: "Mandel", "Footing"
+  # for goal: Mandel: "mean", Footing: "point"
+  goal: "mean"
+
+# ROM Settings
+ROM: 
+  # Total energy of POD
+  total_energy: 
+    # NOTE: lost energy is stated
+    primal:
+      displacement: 1.e-7
+      pressure: 1.e-11
+    dual:
+      displacement: 1.e-9
+      pressure: 1.e-9
+  max_iterations: 100
+  min_iterations: 5
+  # this is for dual t=0 solution workaround
+  dual_FOM_steps_back: 5
+
+# FOM settings
+FOM: 
+  start_time: 0.0
+  end_time: 5.0e+6
+  delta_t: 1000.0
+  force_recompute:
+    primal: False
+    dual: False
+  mesh_refinement: 1  # factor of uniform refinements
+  solver: # iterative solver (used if mesh_refinement > 1)
+    tolerance: 5.e-8
+    preconditioner: 
+      type: "jacobi" # choices: "jacobi", "SOR", "AMG_RS", "AMG_SA"
+      max_iter: 1000
+      restart: 1000      
+    preconditioner_backup:  
+      type: "AMG_SA" # choices: "jacobi", "SOR", "AMG_RS", "AMG_SA"
+      max_iter: 200
+      restart: 200  
+
+# other settings for infrastructure of code
+INFRASTRUCTURE:
+  safe_directory: "results/"
+  name: "standard" # currently only for solver results to differentiate between different runs
