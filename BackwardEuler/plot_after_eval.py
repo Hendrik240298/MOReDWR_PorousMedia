@@ -65,26 +65,35 @@ MIN_ITERATIONS = 20
 PARENT_SLAB_SIZE = int(n_timesteps / 1)
 TOTAL_ENERGY = {
     "primal": {
-        "displacement": 1 - 1e-6,
-        "pressure": 1 - 1e-10,
+        "displacement": 1 - 1e-7,
+        "pressure": 1 - 1e-11,
     },
     "dual": {
-        "displacement": 1 - 1e-8,
-        "pressure": 1 - 1e-8,
+        "displacement": 1 - 1e-9,
+        "pressure": 1 - 1e-9,
     },
 }
 
+# Footing
 problem_name = "Footing"
 goal = "point"
 MESH_REFINEMENTS = 2
 direct_solve = False if MESH_REFINEMENTS > 1 else True
 SOLVER_TOL = 0.0 if direct_solve else 5.e-8 
+REL_ERROR_TOLERANCES = [0.5e-2, 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
+
+# # Mandel 
+# problem_name = "Mandel"
+# goal ="mean"
+# MESH_REFINEMENTS = 1
+# direct_solve = True
+# SOLVER_TOL = 0.0
+# REL_ERROR_TOLERANCES = [0.5e-2, 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
 
 
 # REL_ERROR_TOL = .5e-2
 
 
-REL_ERROR_TOLERANCES = [0.5e-2, 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
 
 pattern = r"plot_data_goal_" + goal + "_" + r"\d{6}\.npz"
 for i, REL_ERROR_TOL in enumerate(REL_ERROR_TOLERANCES):
@@ -140,10 +149,15 @@ for i, REL_ERROR_TOL in enumerate(REL_ERROR_TOLERANCES):
 
     fom_cf = functional_FOM  # np.sum(fom.functional_values)
 
+
     # print("iteration infos:", iterations_infos)
     error_cf = np.abs(fom_cf - np.array(iterations_infos[0]["functional"])) / np.abs(
         fom_cf
     )
+    
+    print(error_cf.shape)
+    print(np.array(iterations_infos[0]["error"]).shape)
+
     plt.semilogy(
         100 * np.array(iterations_infos[0]["error"]),
         label="estimated error",
