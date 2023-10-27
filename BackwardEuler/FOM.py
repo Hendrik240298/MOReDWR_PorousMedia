@@ -16,7 +16,7 @@ import rich.table
 import scipy
 from dolfin import *
 from mpi4py import MPI
-from mumps import DMumpsContext
+# from mumps import DMumpsContext
 from petsc4py import PETSc
 from tqdm import tqdm
 
