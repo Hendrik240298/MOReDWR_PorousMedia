@@ -3,12 +3,10 @@
 *.h5
 *.xdmf
 *.npz
-BackwardEuler/__pycache__/FOM.cpython-311.pyc
-BackwardEuler/__pycache__/ROM.cpython-311.pyc
+*.pyc
 BackwardEuler/FOM.png
 BackwardEuler/ROM.png
 .vscode/settings.json
-BackwardEuler/__pycache__/iROM.cpython-311.pyc
 *.svg
 *.eps
 .vscode/launch.json
