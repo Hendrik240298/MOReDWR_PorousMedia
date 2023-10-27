@@ -1,6 +1,5 @@
-from iROM import iROM
-from FOM import FOM
-import logging
+# from iROM import iROM
+# from FOM import FOM
 import os
 import re
 import time
@@ -14,10 +13,12 @@ import numpy as np
 from dolfin import *
 from tabulate import tabulate
 
+# import logging
+
 # configure logger
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
-)
+# logging.basicConfig(
+#     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
+# )
 
 
 @dataclass
@@ -124,8 +125,8 @@ for i, REL_ERROR_TOL in enumerate(REL_ERROR_TOLERANCES):
     exists = False
     for file in files:
         tmp = np.load(file, allow_pickle=True)
-        logging.info(parameters)
-        logging.info(tmp["parameters"])
+        # print(parameters)
+        # print(tmp["parameters"])
         if np.array_equal(parameters, tmp["parameters"]):
             functional_FOM = tmp["functional"]
             functional_values_FOM = tmp["functional_values_FOM"]
@@ -135,7 +136,7 @@ for i, REL_ERROR_TOL in enumerate(REL_ERROR_TOLERANCES):
             REL_ERROR_TOL = tmp["REL_ERROR_TOL"]
             parent_slabs = tmp["parent_slabs"]
             goal = tmp["goal"]
-            logging.info(f"Loaded {file}")
+            print(f"Loaded {file}")
             exists = True
             break
     if not exists:
@@ -145,13 +146,13 @@ for i, REL_ERROR_TOL in enumerate(REL_ERROR_TOLERANCES):
     # Error over iterations
     # ---------------------------------
 
-    fom_cf = functional_FOM  # np.sum(fom.functional_values)
+    fom_cf = np.sum(functional_values_FOM)  # np.sum(fom.functional_values)
 
     # print("iteration infos:", iterations_infos)
     error_cf = np.abs(fom_cf - np.array(iterations_infos[0]["functional"])) / np.abs(fom_cf)
 
-    print(error_cf.shape)
-    print(np.array(iterations_infos[0]["error"]).shape)
+    # print(error_cf.shape)
+    # print(np.array(iterations_infos[0]["error"]).shape)
 
     plt.semilogy(
         100 * np.array(iterations_infos[0]["error"]),
