@@ -206,7 +206,7 @@ fom.solve_functional_trajectory()
 # fom.plot_bottom_solution()
 
 # [0.1e-2 , 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
-REL_ERROR_TOLERANCES = [0.5e-2, 1.0e-2, 2.0e-2, 5.0e-2, 10.0e-2, 20.0e-2]
+REL_ERROR_TOLERANCES = [0.1e-2, 0.5e-2, 1.0e-2, 2.0e-2, 5.0e-2, 10.0e-2, 20.0e-2]
 PLOTTING = False
 
 result_matrix = np.zeros((len(REL_ERROR_TOLERANCES), 6), dtype=object)
