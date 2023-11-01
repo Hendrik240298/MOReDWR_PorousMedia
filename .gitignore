@@ -19,3 +19,4 @@ BackwardEuler/test_yaml.py
 BackwardEuler/config/config_short_jacobi.yaml
 BackwardEuler/config/config_short_AMG_SA.yaml
 BackwardEuler/config/config_short_AMG_RS.yaml
+BackwardEuler/config/config_footing_no_extra_dual_enrichment.yaml
