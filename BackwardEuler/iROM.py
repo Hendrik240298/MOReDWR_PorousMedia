@@ -1565,7 +1565,7 @@ class iROM:
                         f"Enrich for largest error @ (i={worst_index}, t={self.fom.time_points[worst_index + self.parent_slabs[index_ps]['start']]:.2}): {estimate['max_abs']:.5}"
                     )
 
-                    if iteration <= self.MIN_ITERATIONS:
+                    if iteration <= self.MIN_ITERATIONS and self.fom.config["ROM"]["dual_FOM_steps_back"] > 0:
                         # project last - 1 dual solution before changing basis
                         self.parent_slabs[index_ps]["pre_last_dual_solution"] = np.concatenate(
                             (
@@ -1589,7 +1589,7 @@ class iROM:
                     self.enrich_parent_slab(index_ps, worst_index)
                     self.fom_solves += 2
 
-                    if iteration <= self.MIN_ITERATIONS:
+                    if iteration <= self.MIN_ITERATIONS and self.fom.config["ROM"]["dual_FOM_steps_back"] > 0:
                         # enrich with last dual solution (t=0)
                         self.enrich_dual_final_condition(
                             index_ps, self.fom.config["ROM"]["dual_FOM_steps_back"]
