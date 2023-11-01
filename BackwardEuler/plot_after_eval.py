@@ -75,21 +75,24 @@ TOTAL_ENERGY = {
     },
 }
 
-# Footing
-problem_name = "Footing"
-goal = "point"
-MESH_REFINEMENTS = 2
-direct_solve = False if MESH_REFINEMENTS > 1 else True
-SOLVER_TOL = 0.0 if direct_solve else 5.0e-8
-REL_ERROR_TOLERANCES = [0.5e-2, 1.0e-2, 2.0e-2, 5.0e-2, 10.0e-2, 20.0e-2]
+FONT_SIZE_AXIS = 15
+FONT_LABEL_SIZE = 13
 
-# # Mandel
-# problem_name = "Mandel"
-# goal ="mean"
-# MESH_REFINEMENTS = 1
-# direct_solve = True
-# SOLVER_TOL = 0.0
-# REL_ERROR_TOLERANCES = [0.5e-2, 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
+# # Footing
+# problem_name = "Footing"
+# goal = "point"
+# MESH_REFINEMENTS = 2
+# direct_solve = False if MESH_REFINEMENTS > 1 else True
+# SOLVER_TOL = 0.0 if direct_solve else 5.0e-8
+# REL_ERROR_TOLERANCES = [0.1e-2, 0.5e-2, 1.0e-2, 2.0e-2, 5.0e-2, 10.0e-2, 20.0e-2]
+
+# Mandel
+problem_name = "Mandel"
+goal ="mean"
+MESH_REFINEMENTS = 1
+direct_solve = True
+SOLVER_TOL = 0.0
+REL_ERROR_TOLERANCES = [0.1e-2, 0.5e-2, 1.e-2, 2.e-2, 5.0e-2, 10.e-2, 20.e-2]
 
 
 # REL_ERROR_TOL = .5e-2
@@ -153,19 +156,25 @@ for i, REL_ERROR_TOL in enumerate(REL_ERROR_TOLERANCES):
 
     # print(error_cf.shape)
     # print(np.array(iterations_infos[0]["error"]).shape)
-
-    plt.semilogy(
-        100 * np.array(iterations_infos[0]["error"]),
-        label="estimated error",
-    )
     plt.semilogy(
         100 * error_cf,
-        label="true error",
+        label="$e^{\\mathrm{rel}}$: error",
+        linewidth=3,
     )
-    plt.xlabel("#iterations")
-    plt.ylabel("error [%]")
-    plt.legend()
+    plt.semilogy(
+        100 * np.array(iterations_infos[0]["error"]),
+        label="$\eta^{\\mathrm{rel}}$: estimate",
+        linestyle=":",
+        linewidth=3,
+        color="red",
+    )
+    plt.xlabel("#iterations", fontsize = FONT_SIZE_AXIS)
+    plt.ylabel("relative error [%]", fontsize = FONT_SIZE_AXIS)
+    plt.legend(fontsize = FONT_LABEL_SIZE)
     plt.grid()
+    # set the font size of the tick labels
+    plt.tick_params(axis="both", which="major", labelsize=13)
+
     # plt.show()
     name = f"images/tol={REL_ERROR_TOL}_goal_{goal}_error_over_iterations.eps"
     plt.savefig(name, format="eps")
@@ -180,10 +189,13 @@ for i, REL_ERROR_TOL in enumerate(REL_ERROR_TOLERANCES):
         [fom_cf, fom_cf],
         color="green",
         linestyle="--",
+        linewidth=4,
     )
-    plt.xlabel("#iterations")
-    plt.ylabel("cost functional")
+    plt.xlabel("#iterations", fontsize = FONT_SIZE_AXIS)
+    plt.ylabel("cost functional", fontsize = FONT_SIZE_AXIS)
     plt.grid()
+    # set the font size of the tick labels
+    plt.tick_params(axis="both", which="major", labelsize=13)
     # plt.show()
 
     name = f"images/tol={REL_ERROR_TOL}_goal_{goal}_cost_functional_iterations.eps"
@@ -196,28 +208,42 @@ for i, REL_ERROR_TOL in enumerate(REL_ERROR_TOLERANCES):
 
     plt.plot(
         np.array(iterations_infos[0]["POD_size"]["primal"]["displacement"]) + 0.25,
-        label="primal displacement",  # , linestyle="--",marker="x",
+        label="primal displacement", 
+        linewidth=3,
+        color="#1f77b4",# , linestyle="--",marker="x",
     )
 
     plt.plot(
         np.array(iterations_infos[0]["POD_size"]["primal"]["pressure"]) + 0.25,
-        label="primal pressure",  # , linestyle="--",marker="x",
+        label="primal pressure",  
+        linewidth=3,
+        color="#ff7f0e",# , linestyle="--",marker="x",
     )
 
     plt.plot(
         np.array(iterations_infos[0]["POD_size"]["dual"]["displacement"]),
-        label="dual displacement",  # ,linestyle="--",marker="o",fillstyle="none",
+        label="dual displacement",  
+        linewidth=3, 
+        linestyle=":",
+        color="#1f77b4",
+        #marker="o",fillstyle="none",
     )
 
     plt.plot(
         np.array(iterations_infos[0]["POD_size"]["dual"]["pressure"]),
-        label="dual pressure",  # ,linestyle="--",marker="o",fillstyle="none",
+        label="dual pressure",  
+        linewidth=3,
+        linestyle=":",
+        color="#ff7f0e",
+        #marker="o",fillstyle="none",
     )
 
-    plt.xlabel("#iterations")
-    plt.ylabel("POD basis size")
-    plt.legend()
+    plt.xlabel("#iterations", fontsize = FONT_SIZE_AXIS)
+    plt.ylabel("POD basis size", fontsize = FONT_SIZE_AXIS)
+    plt.legend(fontsize = FONT_LABEL_SIZE-2)
     plt.grid()
+    # set the font size of the tick labels
+    plt.tick_params(axis="both", which="major", labelsize=13)
 
     # plt.show()
 
@@ -233,19 +259,25 @@ for i, REL_ERROR_TOL in enumerate(REL_ERROR_TOLERANCES):
         time_points[1:],
         functional_values_FOM,
         label="FOM",
+        linewidth=3,
     )
     plt.plot(
         time_points[1:],
         functional_values_ROM,
         label="ROM",
-        linestyle="--",
+        linestyle=":",
+        linewidth=3,
+        color="red",
     )
-    plt.xlabel("time")
-    plt.ylabel("cost functional")
+    plt.xlabel("time $t$ [s]", fontsize = FONT_SIZE_AXIS)
+    plt.ylabel("$J(U(t))$", fontsize = FONT_SIZE_AXIS)
     # logarithmic y axis
-    plt.yscale("log")
-    plt.legend()
+    # plt.yscale("log")
+    plt.legend(fontsize = FONT_LABEL_SIZE)
     plt.grid()
+    # set the font size of the tick labels
+    plt.tick_params(axis="both", which="major", labelsize=13)
+
     # plt.show()
     name = f"images/tol={REL_ERROR_TOL}_goal_{goal}_functional_over_time.eps"
     plt.savefig(name, format="eps")
