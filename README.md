@@ -1,4 +1,4 @@
-# MOReDWR PorousMedia
+# MOReDWR Porous Media
 
 This repository provides the source code accompanying the scientific paper: [Adaptive space-time model order reduction with dual-weighted residual (MORe DWR) error control for poroelasticity](https://link.springer.com/article/10.1186/s40323-024-00262-6)
 
